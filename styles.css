@@ -363,10 +363,12 @@ body.fullscreen-active .sender-call-controls{flex:none}
 .camera-chips-main:empty::before{content:"กำลังค้นหากล้อง…";font-size:13px;color:var(--muted)}
 @media(max-width:700px){.camera-picker-head{align-items:center}.camera-refresh{min-width:92px;padding:8px 10px}.control-message-tools{align-items:flex-start}}
 
-/* v0.11.13 microphone toggle */
+/* v0.11.14 microphone toggle */
 .call-icon-btn.is-muted{color:#ffb2b8;border-color:#7b3b46;background:#2a151a}
 .call-icon-btn.is-muted:hover,.call-icon-btn.is-muted:focus-visible{color:#ffd0d4;border-color:#a45360}
 
-/* Force alternate microphone glyphs to never overlap */
-#micOnIcon[hidden],#micOffIcon[hidden]{display:none!important}
-#micOnIcon,#micOffIcon{grid-area:1/1}
+
+/* Single SVG microphone icon: only the slash changes state. */
+#micIcon{display:block!important}
+#micMuteSlash{opacity:0;visibility:visible;transition:opacity .12s ease;stroke-width:2.2}
+.call-icon-btn.is-muted #micMuteSlash{opacity:1}

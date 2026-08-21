@@ -14,19 +14,15 @@ const processedMessageIds=new Map();const pendingSenderMessageAcks=new Map();let
 function nextSenderMessageId(){senderMessageSeq=(senderMessageSeq+1)%100000;return `smsg_${Date.now().toString(36)}_${senderMessageSeq.toString(36)}`}
 const video=$('#cameraVideo');
 function updateMicUi(){
-  const btn=$('#micToggleBtn'),on=$('#micOnIcon'),off=$('#micOffIcon');
+  const btn=$('#micToggleBtn'),slash=$('#micMuteSlash');
   if(btn){
     btn.classList.toggle('is-muted',micMuted);
     btn.setAttribute('aria-label',micMuted?'เปิดเสียงไมโครโฟน':'ปิดเสียงไมโครโฟน');
     btn.title=micMuted?'เปิดเสียงไมโครโฟน':'ปิดเสียงไมโครโฟน';
   }
-  if(on){
-    on.hidden=micMuted;
-    on.style.display=micMuted?'none':'block';
-  }
-  if(off){
-    off.hidden=!micMuted;
-    off.style.display=micMuted?'block':'none';
+  if(slash){
+    slash.style.opacity=micMuted?'1':'0';
+    slash.style.visibility='visible';
   }
   const live=audioStream?.getAudioTracks?.()[0];
   if(live)live.enabled=!micMuted;
@@ -786,4 +782,4 @@ $('#statHint').textContent=q().hint;
 $('#statSmartProfile').textContent=smartProfile;
 initIdentity();updateSimpleStatus();updateMicUi();
 $('#newStreamId').onclick=generateNewStreamId;
-log(`v0.11.13 พร้อมใช้งาน — Control Data Hub — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
+log(`v0.11.14 พร้อมใช้งาน — Control Data Hub — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
