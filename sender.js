@@ -12,6 +12,7 @@ const senderMessages=[];
 const processedMessageIds=new Map();const pendingSenderMessageAcks=new Map();let senderMessageSeq=0;
 function nextSenderMessageId(){senderMessageSeq=(senderMessageSeq+1)%100000;return `smsg_${Date.now().toString(36)}_${senderMessageSeq.toString(36)}`}
 const video=$('#cameraVideo');
+const MESSAGE_CORE_VERSION='0.11.2';
 function updateSimpleStatus(){
   const el=$('#senderSimpleStatus');
   const sendBtn=$('#sendToggleBtn'), sendLabel=$('#sendToggleLabel'), sendIcon=$('#sendToggleIcon');
@@ -69,7 +70,7 @@ function initIdentity(){
 function generateNewStreamId(){const id=`cam_${platformSlug()}_${shortId(8)}`;$('#streamId').value=id;if($('#streamIdView'))$('#streamIdView').value=id;localStorage.setItem('remoteCamStreamId',id);$('#cameraName').value=`${PLATFORM} ${id.slice(-4).toUpperCase()}`;localStorage.setItem('remoteCamName',$('#cameraName').value.trim());log(`สร้าง Device ID ใหม่อัตโนมัติ: ${id}`)}
 function publisherLabel(){const name=($('#cameraName').value.trim()||$('#streamId').value).replace(/\|/g,' ');return `RCAM2|${DEVICE_ID}|${name}|${PLATFORM}|${BROWSER}`}
 
-// Smooth Zoom v0.11.5
+// Smooth Zoom v0.11.6
 // Adds 0.5× / 1× smooth return presets when the camera capability range supports them.
 // PWA browsers do not expose AVFoundation/Camera2 native ramping consistently.
 // Strategy:
@@ -751,9 +752,9 @@ document.addEventListener('webkitfullscreenchange',syncFullscreenUi);
 window.matchMedia?.('(display-mode: standalone)').addEventListener?.('change',syncFullscreenUi);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&isPublishing)requestWakeLock()});
 window.addEventListener('beforeunload',()=>stopAll());
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=0115').catch(()=>{});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=0116').catch(()=>{});
 $('#statHint').textContent=q().hint;
 $('#statSmartProfile').textContent=smartProfile;
 initIdentity();updateSimpleStatus();syncFullscreenUi();
 $('#newStreamId').onclick=generateNewStreamId;
-log(`v0.11.5 พร้อมใช้งาน — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
+log(`v0.11.6 พร้อมใช้งาน — Message Core v0.11.2 • ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);

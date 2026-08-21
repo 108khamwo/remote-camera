@@ -1,4 +1,4 @@
-# Remote Camera PWA v0.11.5
+# Remote Camera PWA v0.11.6
 
 - Control Center: สถานะสดแสดงเฉพาะค่าที่วัดได้จริง; โหมด Manual เหลือโหมด + Bitrate และซ่อนค่า WebRTC stats ที่ไม่มีข้อมูล
 
@@ -58,14 +58,19 @@
 - Portrait layout เดิมยังคงเหมือนเดิม
 
 
-## v0.11.5 — Compact Control messaging UI
+## v0.11.6 — Compact Control messaging UI
 - ลดพื้นที่ส่วนข้อความใน Control Center แต่เพิ่มขนาดตัวอักษรประวัติข้อความให้อ่านง่ายขึ้น
 - ปรับ scrollbar ของประวัติข้อความ/Log ให้เป็นโทนมืดเข้ากับระบบ
 - เปลี่ยน emoji บางจุดใน Control Center เป็นไอคอน CSS แบบเรียบเพื่อให้หน้าตาสม่ำเสมอทุกระบบปฏิบัติการ
 - ไม่เปลี่ยนระบบ WebRTC, Auto Discovery หรือข้อความสองทาง
 
-## v0.11.5 — Fullscreen บนมือถือ
+## v0.11.6 — Fullscreen บนมือถือ
 - เพิ่มปุ่ม Fullscreen บน Sender สำหรับ Android/เบราว์เซอร์ที่รองรับ Fullscreen API
 - Android/Chrome: กดแล้วพยายามซ่อน browser chrome ด้วย Fullscreen API
 - iPhone Safari: ถ้า Fullscreen API ไม่เปิดให้เว็บ ระบบจะแนะนำให้ Add to Home Screen แล้วเปิดเป็น PWA ซึ่งไม่มีแถบ Safari
 - เพิ่ม Apple mobile web app meta และ `display_override` สำหรับ PWA
+
+## v0.11.6 — Stable Message Core
+- ระบบข้อความถูกล็อกให้ใช้พฤติกรรม/โปรโตคอลที่พิสูจน์แล้วจาก v0.11.2
+- ฟีเจอร์ใหม่ของ v0.11.5 เช่น Fullscreen และ UI ล่าสุดยังคงอยู่
+- ปรับ Service Worker ให้ HTML/JS/CSS ใช้ไฟล์ล่าสุดจากเครือข่ายก่อน เพื่อลดปัญหา Sender/Control คนละเวอร์ชันจาก cache ระหว่างอัปเดต GitHub Pages
