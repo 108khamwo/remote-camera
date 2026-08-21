@@ -47,7 +47,7 @@ function initIdentity(){
 function generateNewStreamId(){const id=`cam_${platformSlug()}_${shortId(8)}`;$('#streamId').value=id;if($('#streamIdView'))$('#streamIdView').value=id;localStorage.setItem('remoteCamStreamId',id);$('#cameraName').value=`${PLATFORM} ${id.slice(-4).toUpperCase()}`;localStorage.setItem('remoteCamName',$('#cameraName').value.trim());log(`สร้าง Device ID ใหม่อัตโนมัติ: ${id}`)}
 function publisherLabel(){const name=($('#cameraName').value.trim()||$('#streamId').value).replace(/\|/g,' ');return `RCAM2|${DEVICE_ID}|${name}|${PLATFORM}|${BROWSER}`}
 
-// Smooth Zoom v0.9.6
+// Smooth Zoom v0.9.7
 // PWA browsers do not expose AVFoundation/Camera2 native ramping consistently.
 // Strategy:
 // 1) +/- buttons use a continuous velocity ramp.
@@ -58,10 +58,10 @@ function publisherLabel(){const name=($('#cameraName').value.trim()||$('#streamI
 let zoomState={
   min:1,max:1,step:.1,current:1,virtual:1,target:1,
   drive:0,velocity:0,coasting:false,timer:null,lastTick:0,
-  applying:false,pending:null,fineUnsupported:false,sliderDragging:false
+  applying:false,pending:null,fineUnsupported:false,supported:false
 };
 const ZOOM_TRAVEL_SECONDS={slow:40,normal:16,fast:7};
-function zoomSpeedKey(){return $('#zoomSpeed')?.value||'normal'}
+function zoomSpeedKey(){return $('#zoomSpeed')?.value||'slow'}
 function zoomMaxSpeed(range){
   const seconds=ZOOM_TRAVEL_SECONDS[zoomSpeedKey()]||ZOOM_TRAVEL_SECONDS.normal;
   const floor=zoomSpeedKey()==='slow'?.05:zoomSpeedKey()==='fast'?.35:.14;
@@ -76,11 +76,10 @@ function quantizeZoom(v){
 }
 function fineZoom(v){return Number(clamp(Number(v),zoomState.min,zoomState.max).toFixed(3))}
 function updateZoomUi(v=zoomState.current){
-  const z=$('#zoomRange');
-  // Never fight the user's finger. While dragging, the thumb is the source of truth.
-  if(z&&!z.disabled&&!zoomState.sliderDragging)z.value=String(v);
+  const readout=$('#zoomCurrent');
+  if(readout)readout.textContent=`${Number(v).toFixed(2)}×`;
   const info=$('#zoomInfo');
-  if(info)info.textContent=`Zoom ${zoomState.min} – ${zoomState.max} • ตอนนี้ ${Number(v).toFixed(2)}× • ปุ่ม ${zoomSpeedKey()==='slow'?'ช้า':zoomSpeedKey()==='fast'?'เร็ว':'ปกติ'}`;
+  if(info)info.textContent=`ช่วง ${zoomState.min}× – ${zoomState.max}× • ความเร็ว ${zoomSpeedKey()==='slow'?'ช้า':zoomSpeedKey()==='fast'?'เร็ว':'ปกติ'} • กด − / + ค้างเพื่อซูม`;
 }
 async function applyOneZoom(v,{fine=true}={}){
   const t=cameraStream?.getVideoTracks?.()[0];
@@ -126,7 +125,6 @@ function ensureZoomLoop(){
   if(zoomState.timer)return;
   zoomState.lastTick=performance.now();
   zoomState.timer=setInterval(()=>{
-    if(zoomState.sliderDragging)return; // slider has its own live path
     const now=performance.now();
     const dt=Math.min(.10,Math.max(.018,(now-zoomState.lastTick)/1000));
     zoomState.lastTick=now;
@@ -163,13 +161,6 @@ function setSmoothZoomTarget(value,{speed}={}){
   zoomState.target=clamp(Number(value),zoomState.min,zoomState.max);
   if(!Number.isFinite(zoomState.virtual))zoomState.virtual=zoomState.current;
   ensureZoomLoop();
-}
-function setLiveSliderZoom(value){
-  const v=clamp(Number(value),zoomState.min,zoomState.max);
-  if(!Number.isFinite(v))return;
-  zoomState.drive=0;zoomState.coasting=false;zoomState.velocity=0;
-  zoomState.target=v;zoomState.virtual=v;
-  queueZoomHardware(v,{fine:true});
 }
 function setZoomDrive(direction,{speed}={}){
   if(speed&&$('#zoomSpeed'))$('#zoomSpeed').value=speed;
@@ -310,15 +301,22 @@ function updateCameraStatus(track){
 }
 
 async function configureZoom(track){
-  const caps=track.getCapabilities?track.getCapabilities():{};const z=$('#zoomRange');
-  if(caps.zoom){
+  const caps=track.getCapabilities?track.getCapabilities():{};
+  const supported=!!caps.zoom;
+  zoomState.supported=supported;
+  $('#zoomOutBtn').hidden=!supported;
+  $('#zoomInBtn').hidden=!supported;
+  $('#zoomPanel').hidden=!supported;
+  $('#zoomUnsupported').hidden=supported;
+  if(supported){
     const current=Number(track.getSettings().zoom||caps.zoom.min);
-    z.disabled=false;z.min=caps.zoom.min;z.max=caps.zoom.max;z.step=caps.zoom.step||0.1;z.value=current;
-    zoomState.min=Number(caps.zoom.min);zoomState.max=Number(caps.zoom.max);zoomState.step=Number(caps.zoom.step||0.1);zoomState.current=current;zoomState.virtual=current;zoomState.target=current;zoomState.drive=0;zoomState.velocity=0;zoomState.coasting=false;zoomState.pending=null;zoomState.fineUnsupported=false;zoomState.sliderDragging=false;
+    zoomState.min=Number(caps.zoom.min);zoomState.max=Number(caps.zoom.max);zoomState.step=Number(caps.zoom.step||0.1);zoomState.current=current;zoomState.virtual=current;zoomState.target=current;zoomState.drive=0;zoomState.velocity=0;zoomState.coasting=false;zoomState.pending=null;zoomState.fineUnsupported=false;zoomState.supported=true;
+    if($('#zoomSpeed'))$('#zoomSpeed').value='slow';
     updateZoomUi(current);ensureZoomLoop();
+    log(`Zoom API พร้อม: ${zoomState.min}×–${zoomState.max}× • ค่าเริ่มต้นช้า`);
   }else{
-    z.disabled=true;z.min=1;z.max=1;z.value=1;zoomState={...zoomState,min:1,max:1,step:.1,current:1,virtual:1,target:1,drive:0,velocity:0,coasting:false,pending:null,fineUnsupported:false,sliderDragging:false};
-    $('#zoomInfo').textContent='Safari/อุปกรณ์นี้ไม่เปิด Zoom API ให้เว็บ';
+    zoomState={...zoomState,min:1,max:1,step:.1,current:1,virtual:1,target:1,drive:0,velocity:0,coasting:false,pending:null,fineUnsupported:false,supported:false};
+    log(`Zoom API ไม่พร้อมบน ${PLATFORM}/${BROWSER} — ซ่อนปุ่ม Zoom`);
   }
 }
 
@@ -481,23 +479,13 @@ $('#frontBtn').onclick=()=>openCamera({facing:'user'}).catch(e=>log(`Switch erro
 $('#rearBtn').onclick=()=>openCamera({facing:'environment'}).catch(e=>log(`Switch error: ${e.message}`));
 $('#deviceSelect').onchange=()=>{log('เลือกกล้องขั้นสูงแล้ว — ยังไม่สลับจนกว่าจะกด “ใช้กล้องที่เลือก”')};
 $('#applyDeviceBtn').onclick=()=>{const id=$('#deviceSelect').value;if(!id){explicitDeviceId='';log('กลับเป็นโหมดอัตโนมัติ/หน้า-หลัง');return}openCamera({deviceId:id,facing:currentFacing}).catch(x=>log(`Device error: ${x.message}`))};
-const zoomRange=$('#zoomRange');
-const beginSlider=()=>{if(zoomRange.disabled)return;zoomState.sliderDragging=true;zoomState.drive=0;zoomState.coasting=false;zoomState.velocity=0;zoomState.pending=null;};
-const endSlider=()=>{if(!zoomState.sliderDragging)return;zoomState.sliderDragging=false;zoomState.target=zoomState.current;zoomState.virtual=zoomState.current;updateZoomUi(zoomState.current);};
-zoomRange.addEventListener('pointerdown',beginSlider);
-zoomRange.addEventListener('touchstart',beginSlider,{passive:true});
-zoomRange.addEventListener('input',e=>{if(!zoomState.sliderDragging)zoomState.sliderDragging=true;setLiveSliderZoom(e.target.value)});
-zoomRange.addEventListener('change',e=>{setLiveSliderZoom(e.target.value);setTimeout(endSlider,80)});
-zoomRange.addEventListener('pointerup',()=>setTimeout(endSlider,80));
-zoomRange.addEventListener('pointercancel',endSlider);
-zoomRange.addEventListener('touchend',()=>setTimeout(endSlider,80),{passive:true});
 $('#zoomSpeed').onchange=()=>{updateZoomUi();sendTelemetry()};
 function bindHoldZoom(btn,dir){
   let activePointer=null;
   const block=e=>{e.preventDefault();e.stopPropagation();};
   const start=e=>{
     block(e);
-    if($('#zoomRange').disabled)return;
+    if(!zoomState.supported)return;
     activePointer=e.pointerId ?? 'mouse';
     try{if(e.pointerId!=null)btn.setPointerCapture(e.pointerId)}catch{}
     btn.classList.add('holding');
@@ -524,9 +512,9 @@ $('#quality').onchange=async()=>{
   if(cameraStream){try{await openCamera({facing:currentFacing,deviceId:explicitDeviceId})}catch(e){log(`Quality switch error: ${e.message}`)}}
 };
 window.addEventListener('beforeunload',()=>stopAll());
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=096').catch(()=>{});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=097').catch(()=>{});
 $('#statHint').textContent=q().hint;
 $('#statSmartProfile').textContent=smartProfile;
 initIdentity();
 $('#newStreamId').onclick=generateNewStreamId;
-log(`v0.9.6 พร้อมใช้งาน — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
+log(`v0.9.7 พร้อมใช้งาน — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);

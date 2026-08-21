@@ -1,7 +1,7 @@
 <!doctype html>
-<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="styles.css?v=096"><title>Control Center</title></head>
+<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="styles.css?v=097"><title>Control Center</title></head>
 <body><main class="wrap">
-<div class="topbar"><div class="brand">🖥️ Control Center <span class="version">v0.9.6</span></div><a class="badge" href="index.html">หน้าหลัก</a></div>
+<div class="topbar"><div class="brand">🖥️ Control Center <span class="version">v0.9.7</span></div><a class="badge" href="index.html">หน้าหลัก</a></div>
 
 <div class="card">
   <div class="section-title">ค้นหากล้องอัตโนมัติ</div>
@@ -27,7 +27,7 @@
 <section>
   <div class="card">
     <div class="preview"><iframe id="remoteFrame" class="preview-frame" allow="autoplay; fullscreen" referrerpolicy="no-referrer"></iframe><div class="overlay"><div id="status" class="status">รอเลือกกล้อง</div><div style="display:flex;gap:6px"><div id="smartBadge" class="status">MANUAL</div><div id="latency" class="status">HQ VIEW</div></div></div></div>
-    <!-- v0.9.6: Remote camera commands are intentionally removed from the Control Center UI.
+    <!-- v0.9.7: Remote camera commands are intentionally removed from the Control Center UI.
          Discovery/telemetry still use the data channel, but camera switching/zoom is controlled locally on each phone. -->
     <div class="hidden" aria-hidden="true">
       <button id="front"></button><button id="rear"></button><button id="zoomOut"></button><button id="zoomIn"></button>
@@ -65,4 +65,4 @@
   <div class="spacer"></div><div class="card"><div class="section-title">Log</div><div id="log" class="log"></div></div>
 </aside>
 </div></main>
-<script src="sdk-loader.js?v=096"></script><script src="control.js?v=096"></script></body></html>
+<script src="sdk-loader.js?v=097"></script><script src="control.js?v=097"></script></body></html>
