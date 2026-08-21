@@ -1,3 +1,23 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000}video{width:100vw;height:100vh;object-fit:contain;background:#000}</style><title>OBS Receiver</title></head><body><video id="v" autoplay playsinline></video><script src="sdk-loader.js?v=03"></script><script>
-(async()=>{await loadVDONinjaSDK();const p=new URLSearchParams(location.search),room=p.get('room')||'remote-cam-test',streamID=p.get('stream')||'cam01';const video=document.getElementById('v'),ms=new MediaStream();video.srcObject=ms;const vdo=new VDONinjaSDK({autoRecover:true,autoRelay:true,salt:'vdo.ninja'});vdo.addEventListener('track',e=>{const t=e.detail?.track;if(t&&!ms.getTracks().includes(t))ms.addTrack(t)});await vdo.connect();await vdo.joinRoom({room});await vdo.view(streamID,{audio:true,video:true,label:'obs'});})().catch(console.error);
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OBS HQ Receiver</title><style>html,body{margin:0;background:#000;color:#fff;font:14px system-ui;height:100%}body{display:grid;place-items:center}</style></head><body><div id="msg">กำลังเปิด HQ WebRTC viewer…</div><script>
+(()=>{
+  const p=new URLSearchParams(location.search);
+  const stream=p.get('stream')||'cam01';
+  const bitrate=Math.max(500,Math.min(20000,parseInt(p.get('bitrate')||'8000',10)||8000));
+  const buffer=Math.max(0,Math.min(1000,parseInt(p.get('buffer')||'200',10)||0));
+  const codec=(p.get('codec')||'h264').toLowerCase();
+  const preview=p.get('preview')==='1';
+  const u=new URL('https://vdo.ninja/');
+  // Direct view โดยไม่เข้ารูปแบบ room guest เพื่อให้ viewer เป็นคนกำหนดคุณภาพเต็ม
+  u.searchParams.set('view',stream);
+  u.searchParams.set('videobitrate',String(bitrate));
+  u.searchParams.set('scale','100');
+  u.searchParams.set('buffer',String(buffer));
+  u.searchParams.set('keyframerate','2000');
+  u.searchParams.set('obsfix','1');
+  u.searchParams.set('cleanoutput','');
+  u.searchParams.set('solo','');
+  if(codec)u.searchParams.set('codec',codec);
+  if(preview)u.searchParams.set('mutespeaker','');
+  location.replace(u.toString());
+})();
 </script></body></html>
