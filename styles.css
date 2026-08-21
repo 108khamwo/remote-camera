@@ -283,3 +283,9 @@ body.fullscreen-active .sender-call-topbar{flex:none}
 body.fullscreen-active .sender-call-controls{flex:none}
 @media(pointer:fine){#fullscreenBtn{display:none}}
 @media(max-width:380px){.sender-call-top-actions{gap:4px}.call-icon-btn{width:35px;height:35px}.call-svg-icon{width:18px;height:18px}}
+
+/* v0.11.7 — unified sender icon set */
+.call-svg-icon{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+.call-icon-btn{color:#d9edf8}
+.call-icon-btn:hover,.call-icon-btn:focus-visible{color:#79dbff;border-color:#3d718e}
+.call-icon-btn.is-active{color:#79dbff;border-color:#3d718e;background:#10283a}

@@ -12,7 +12,6 @@ const senderMessages=[];
 const processedMessageIds=new Map();const pendingSenderMessageAcks=new Map();let senderMessageSeq=0;
 function nextSenderMessageId(){senderMessageSeq=(senderMessageSeq+1)%100000;return `smsg_${Date.now().toString(36)}_${senderMessageSeq.toString(36)}`}
 const video=$('#cameraVideo');
-const MESSAGE_CORE_VERSION='0.11.2';
 function updateSimpleStatus(){
   const el=$('#senderSimpleStatus');
   const sendBtn=$('#sendToggleBtn'), sendLabel=$('#sendToggleLabel'), sendIcon=$('#sendToggleIcon');
@@ -70,7 +69,7 @@ function initIdentity(){
 function generateNewStreamId(){const id=`cam_${platformSlug()}_${shortId(8)}`;$('#streamId').value=id;if($('#streamIdView'))$('#streamIdView').value=id;localStorage.setItem('remoteCamStreamId',id);$('#cameraName').value=`${PLATFORM} ${id.slice(-4).toUpperCase()}`;localStorage.setItem('remoteCamName',$('#cameraName').value.trim());log(`สร้าง Device ID ใหม่อัตโนมัติ: ${id}`)}
 function publisherLabel(){const name=($('#cameraName').value.trim()||$('#streamId').value).replace(/\|/g,' ');return `RCAM2|${DEVICE_ID}|${name}|${PLATFORM}|${BROWSER}`}
 
-// Smooth Zoom v0.11.6
+// Smooth Zoom v0.11.2
 // Adds 0.5× / 1× smooth return presets when the camera capability range supports them.
 // PWA browsers do not expose AVFoundation/Camera2 native ramping consistently.
 // Strategy:
@@ -335,53 +334,6 @@ async function releaseWakeLock(){
   try{await wakeLockSentinel?.release?.()}catch{}
   wakeLockSentinel=null;
 }
-let fullscreenNoticeTimer=null;
-function isStandaloneMode(){
-  return !!(window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone===true);
-}
-function fullscreenElement(){return document.fullscreenElement||document.webkitFullscreenElement||null}
-function showFullscreenNotice(text,ms=5200){
-  const el=$('#fullscreenNotice');if(!el)return;
-  el.textContent=text;el.hidden=false;
-  if(fullscreenNoticeTimer)clearTimeout(fullscreenNoticeTimer);
-  fullscreenNoticeTimer=setTimeout(()=>{el.hidden=true},ms);
-}
-function syncFullscreenUi(){
-  const active=!!fullscreenElement()||isStandaloneMode();
-  document.body.classList.toggle('fullscreen-active',!!fullscreenElement()||isStandaloneMode());
-  const btn=$('#fullscreenBtn');if(!btn)return;
-  btn.classList.toggle('is-active',active);
-  btn.setAttribute('aria-label',fullscreenElement()?'ออกจากเต็มจอ':'เต็มจอ');
-  btn.title=fullscreenElement()?'ออกจากเต็มจอ':(isStandaloneMode()?'เปิดแบบแอปแล้ว':'เต็มจอ');
-}
-async function toggleFullscreen(){
-  try{
-    if(fullscreenElement()){
-      if(document.exitFullscreen)await document.exitFullscreen();
-      else if(document.webkitExitFullscreen)await document.webkitExitFullscreen();
-      return;
-    }
-    if(isStandaloneMode()){
-      syncFullscreenUi();
-      showFullscreenNotice('กำลังเปิดแบบแอปเต็มจออยู่แล้ว');
-      return;
-    }
-    const root=document.documentElement;
-    const request=root.requestFullscreen||root.webkitRequestFullscreen;
-    if(request){
-      try{await request.call(root,{navigationUI:'hide'})}
-      catch{await request.call(root)}
-      syncFullscreenUi();
-      return;
-    }
-    // iPhone Safari commonly does not expose arbitrary-element Fullscreen API.
-    // The reliable no-browser-chrome path is launching the installed PWA from Home Screen.
-    showFullscreenNotice('iPhone Safari: หากต้องการซ่อนแถบ Browser ทั้งหมด ให้กด Share → เพิ่มไปยังหน้าจอโฮม แล้วเปิด Remote Camera จากไอคอนบนหน้าจอ');
-  }catch(e){
-    showFullscreenNotice(`เข้าโหมดเต็มจอไม่ได้: ${e?.message||e}`);
-  }finally{setTimeout(syncFullscreenUi,80)}
-}
-
 function setScreenRest(active){
   const overlay=$('#screenRestOverlay');if(!overlay)return;
   overlay.hidden=!active;
@@ -737,7 +689,6 @@ $('#quality').onchange=async()=>{
 };
 function openSheet(id){const el=$(id);if(el){el.hidden=false;document.body.style.overflow='hidden'}}
 function closeSheets(){['#settingsSheet','#messageSheet'].forEach(id=>{const el=$(id);if(el)el.hidden=true});document.body.style.overflow=''}
-$('#fullscreenBtn').onclick=()=>toggleFullscreen();
 $('#settingsOpenBtn').onclick=()=>openSheet('#settingsSheet');
 $('#messageOpenBtn').onclick=()=>openSheet('#messageSheet');
 document.querySelectorAll('[data-close-settings],[data-close-message]').forEach(el=>el.addEventListener('click',closeSheets));
@@ -747,14 +698,11 @@ $('#incomingMessageToast').addEventListener('click',()=>openSheet('#messageSheet
 $('#senderMessageSend').onclick=()=>{const input=$('#senderMessageInput');if(sendSenderMessage(input.value)){input.value=''}};
 $('#senderMessageInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#senderMessageSend').click()}});
 document.querySelectorAll('[data-quick-reply]').forEach(btn=>btn.addEventListener('click',()=>{if(sendSenderMessage(btn.dataset.quickReply||''))closeSheets()}));
-document.addEventListener('fullscreenchange',syncFullscreenUi);
-document.addEventListener('webkitfullscreenchange',syncFullscreenUi);
-window.matchMedia?.('(display-mode: standalone)').addEventListener?.('change',syncFullscreenUi);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&isPublishing)requestWakeLock()});
 window.addEventListener('beforeunload',()=>stopAll());
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=0116').catch(()=>{});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=0117').catch(()=>{});
 $('#statHint').textContent=q().hint;
 $('#statSmartProfile').textContent=smartProfile;
-initIdentity();updateSimpleStatus();syncFullscreenUi();
+initIdentity();updateSimpleStatus();
 $('#newStreamId').onclick=generateNewStreamId;
-log(`v0.11.6 พร้อมใช้งาน — Message Core v0.11.2 • ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
+log(`v0.11.7 พร้อมใช้งาน — Message Core v0.11.2 • ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);

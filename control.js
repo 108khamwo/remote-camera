@@ -19,7 +19,6 @@ const LEGACY_CAMERA_STORE='remoteCamAutoCamerasV2';
 // offline just because one transient WebRTC/data peer disconnects during recovery.
 const OFFLINE_MS=12000;
 const discoveryCandidates=new Map();
-const MESSAGE_CORE_VERSION='0.11.2';
 
 function log(m){logEl.textContent+=`[${new Date().toLocaleTimeString()}] ${m}\n`;logEl.scrollTop=logEl.scrollHeight}
 function cleanId(v){return String(v||'').trim().replace(/[^\w]/g,'_')}
@@ -419,7 +418,7 @@ function handleReceiverStats(d){
   }else updateLiveStatusBase();
   const badge=$('#smartBadge');badge.textContent=smart?(d.state&&d.state!=='waiting'?`SMART ${stateThai(d.state)}`:'SMART'):'MANUAL';badge.classList.toggle('ok',d.state==='good');
   if(d.action==='bitrate'&&d.reason&&smart)log(`Smart Network → ${(d.currentBitrate/1000).toFixed(1)} Mbps (${d.reason})`);
-  // v0.11.6: unavailable receiver metrics are hidden instead of showing placeholder dashes.
+  // v0.11.2: unavailable receiver metrics are hidden instead of showing placeholder dashes.
 }
 function resetTelemetry(){lastTelemetry=null;$('#telName').textContent=activeName();$('#telPlatform').textContent=activeCamera()?.platform||'-';$('#telRequested').textContent='รอข้อมูล…';['telActual','telMeasured','telCamera','telVerdict','telSmartProfile'].forEach(id=>$('#'+id).textContent='-')}
 
@@ -485,7 +484,7 @@ $('#cameraChips').addEventListener('click',e=>{const b=e.target.closest('[data-i
 $('#controlMessageOpen').onclick=()=>{$('#controlMessagePanel').hidden=!$('#controlMessagePanel').hidden;renderControlMessages()};
 $('#controlMessageSendSelected').onclick=()=>{const input=$('#controlMessageInput');if(sendControlMessage(input.value,{broadcast:false}))input.value=''};
 $('#controlMessageSendAll').onclick=()=>{const input=$('#controlMessageInput');if(sendControlMessage(input.value,{broadcast:true}))input.value=''};
-$('#controlMessageInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#controlMessageSendSelected').click()}});
+$('#controlMessageInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#controlMessageSendAll').click()}});
 $('#controlMessageToast').addEventListener('click',()=>{$('#controlMessagePanel').hidden=false;$('#controlMessageToast').hidden=true;renderControlMessages()});
 $('#refreshDiscovery').onclick=()=>restartDiscovery().catch(e=>log(`Discovery restart error: ${e.message}`));
 $('#forgetOffline').onclick=()=>{cameras=cameras.filter(c=>c.online);if(selectedCameraId&&!cameras.some(c=>c.id===selectedCameraId))rememberSelectedCamera('');registrySignature='';saveCameras();renderRegistry(null,{force:true});log('ล้างรายการ Offline แล้ว')};
@@ -507,4 +506,4 @@ $('#copy').onclick=async()=>{if(!$('#obsUrl').value)return;await navigator.clipb
 setInterval(markOffline,2000);
 window.addEventListener('beforeunload',()=>{try{discoveryCtl?.stop?.()}catch{};try{discoveryVdo?.disconnect?.()}catch{}});
 startDiscovery().catch(e=>{log(`Auto Discovery error: ${e.message}`);$('#discoveryStatus').innerHTML='<b>เชื่อมไม่สำเร็จ</b><span>กด “ค้นหากล้องใหม่” เพื่อลองอีกครั้ง</span>'});
-log(`v0.11.6 พร้อม — Message Core v0.11.2 • Preview เปิดจาก Stream ID โดยตรง + เลือกกล้องแสดงตลอด • Offline grace ${OFFLINE_MS/1000}s`);
+log(`v0.11.7 พร้อม — Message Core v0.11.2 • Preview เปิดจาก Stream ID โดยตรง + เลือกกล้องแสดงตลอด • Offline grace ${OFFLINE_MS/1000}s`);
