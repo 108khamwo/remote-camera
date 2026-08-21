@@ -1,54 +1,48 @@
-# Remote Camera PWA v0.5
+# Remote Camera PWA v0.6 — Smart Network
 
-Prototype สำหรับส่งกล้อง iPhone ผ่าน WebRTC ไปยัง OBS และควบคุมสลับกล้องจาก Control Center
+ต้นแบบส่งภาพ iPhone → WebRTC → OBS พร้อม Control Center และโหมดอัจฉริยะสำหรับ 4G/5G อ่อน
 
-## จุดเปลี่ยนสำคัญใน v0.5
+## สิ่งใหม่ใน v0.6
 
-- ส่ง **Camera MediaStreamTrack โดยตรง** เข้า VDO.Ninja SDK แทน Canvas captureStream
-- เวลาสลับกล้อง/เปลี่ยน preset ใช้ `vdo.replaceTrack(oldTrack, newTrack)` เพื่อคง peer connection เดิม
-- ค่าเริ่มต้นกล้องเป็น 1080p30 และ `contentHint = motion` เพื่อเน้น frame rate สำหรับภาพเคลื่อนไหว
-- เพิ่ม 1080p60 / 720p60 สำหรับ iPhone ที่รองรับ
-- Control Center เพิ่มตัวเลือก bitrate 4 / 6 / 8 / 10 / 12 / 16 Mbps
-- ค่าแนะนำเริ่มต้น: 1080p30 + 8 Mbps + H.264 + buffer 200 ms
-- OBS Receiver ใช้ viewer engine ของ VDO.Ninja โดยตรง พร้อม `videobitrate`, `scale=100`, `buffer`, `keyframerate=2000`, `obsfix=1`
-- Control Center ใช้ SDK connection แบบ data-only สำหรับ remote control ขณะที่ภาพ preview ใช้ HQ viewer เหมือน OBS
+- เพิ่ม **Smart Network** ที่ `receiver.html` โดยตรง จึงทำงานกับ OBS Browser Source ได้แม้ไม่ได้เปิด Control Center ค้างไว้
+- เริ่มจาก bitrate สูงสุดที่กำหนด เช่น 8 Mbps แล้วตรวจ WebRTC stats ประมาณทุก 1.25 วินาที
+- ใช้ packet loss, RTT, jitter และ available bitrate (เมื่อ browser รายงาน) เป็นตัวตัดสิน
+- ลด bitrate แบบเป็นขั้นเมื่อเน็ตอ่อน และเพิ่มคืนแบบช้ากว่าเมื่อสัญญาณนิ่ง เพื่อลดอาการแกว่งขึ้นลง
+- ตั้ง bitrate ต่ำสุดได้ เช่น 1.8 Mbps
+- หากลดถึงขั้นต่ำแล้วยังวิกฤตต่อเนื่อง Control Center สามารถสั่ง iPhone ลด Capture เป็น **720p30 ชั่วคราว** ผ่าน data channel
+- เมื่อสัญญาณกลับมานิ่ง ระบบคืน preset เดิมอัตโนมัติ
+- การเปลี่ยน Capture ยังใช้ `replaceTrack()` เพื่อพยายามคง peer connection เดิม
+- แสดงสถานะสด: Network state, Target bitrate, bitrate รับจริง, packet loss, RTT และ jitter
 
-## วิธีอัปเดต GitHub Pages
+## โหมดแนะนำ
 
-อัปโหลดไฟล์ทั้งหมดในโฟลเดอร์นี้ทับของเดิม แล้ว Commit changes จากนั้นรอ GitHub Pages อัปเดตและปิด/เปิดหน้า Safari ใหม่
+### เน็ตปกติ
+- Camera: 1080p30
+- Smart Network: ON
+- Maximum bitrate: 8 Mbps
+- Minimum bitrate: 1.8 Mbps
+- Buffer: 200 ms
+- Codec: H.264
 
-## วิธีทดสอบ
+### เน็ตอ่อนมาก
+Smart Network จะลดประมาณ 8 → 6.5 → 5 → 4 → 3.2 → 2.5 → 2 → 1.8 Mbps ตามสถานการณ์
 
-1. iPhone เปิด `sender.html`
-2. เลือก 1080p / 30 แล้วเปิดกล้อง
-3. กดเริ่มส่งภาพ
+หากอยู่ขั้นต่ำแล้วยังมี loss/RTT/jitter สูงต่อเนื่อง และเปิด `ลดเป็น 720p30 ชั่วคราว` ไว้ Control Center จะสั่ง Sender ลด Capture เพื่อรักษาความต่อเนื่องของภาพ
+
+## การใช้งาน
+
+1. อัปโหลดไฟล์ทั้งหมดขึ้น GitHub Pages ผ่าน HTTPS
+2. iPhone เปิด `sender.html`
+3. เลือก 1080p30 → เปิดกล้อง → เริ่มส่งภาพ
 4. คอมเปิด `control.html`
-5. ตั้ง Stream ID ให้ตรงกัน และ Bitrate = 8 Mbps, Buffer = 200 ms, Codec = H.264
-6. กดเชื่อมต่อ + เปิดภาพ HQ
-7. ทดสอบแพนกล้องซ้าย/ขวา เดินถือกล้อง และสลับหน้า/หลัง
-8. ใน OBS ใช้ URL ที่ Control Center สร้างให้เป็น Browser Source ขนาด 1920×1080
-
-## ถ้ายังเห็นบล็อกเมื่อแพนกล้อง
-
-- ลองเพิ่ม 8 → 10 → 12 Mbps ทีละขั้น
-- ถ้าภาพกระตุกแต่เน็ตดี ลอง 1080p30 ก่อน 1080p60
-- ถ้าเน็ต 5G แกว่ง ให้คง 8 Mbps แล้วเพิ่ม Buffer 200 → 350 ms
-- ถ้า upload ของ iPhone ไม่พอ ให้ลดเป็น 720p60 / 6 Mbps แทนการฝืน 1080p60
+5. เลือก `Smart Network — เน็ตอ่อน`
+6. ตั้ง Maximum 8 Mbps / Minimum 1.8 Mbps / Buffer 200 ms
+7. กดเชื่อมต่อ
+8. คัดลอก OBS Browser Source URL ไปใส่ OBS
 
 ## หมายเหตุ
 
-Bitrate ใน VDO.Ninja P2P โดยทั่วไปเป็นค่าที่ฝั่ง viewer ร้องขอ จึงถูกใส่ไว้ใน OBS/Preview viewer URL ไม่ใช่ตัวเลือก encoder ที่หน้า Sender โดยตรง
-
-
-## แก้ไข v0.5
-
-- แก้ HQ Viewer / OBS URL ให้ส่ง `room` ไปด้วย
-- เนื่องจาก Sender publish `cam01` ภายใน `remote-cam-test` จึงต้องใช้ Solo link รูปแบบ `?room=ROOM&view=STREAM&solo`
-- v0.5 ลืมใส่ Room ใน receiver ทำให้ Remote Control ต่อได้ แต่ Preview/OBS ไม่มีภาพ
-
-
-## v0.5 FPS Telemetry
-- Sender แสดง Requested FPS, `MediaStreamTrack.getSettings().frameRate`, FPS ที่วัดจากเฟรมจริงด้วย `requestVideoFrameCallback()` และช่วง FPS capability ที่ Safari เปิดให้
-- Sender กระจาย Telemetry ผ่าน WebRTC data channel ไป Control Center ทุก ~1.5 วินาที
-- Control Center สรุปอัตโนมัติว่า Requested 60 แต่ capture จริงอยู่ราว 30 หรือไม่
-- ค่า 60 fps ใน PWA เปลี่ยนความหมายเป็น **สูงสุด 60 fps** เพราะ Safari อาจเลือกค่าต่ำกว่า
+- Smart bitrate ของ OBS อยู่ใน `receiver.html` ดังนั้น OBS แต่ละ Browser Source ปรับ bitrate ของ connection ตัวเองได้
+- Capture fallback 720p30 ต้องมี Control Center เชื่อมอยู่ เพราะ Control Center เป็นตัวส่งคำสั่งกลับไป iPhone
+- WebRTC มี congestion control ของตัวเองอยู่แล้ว โหมด Smart นี้เป็นชั้นควบคุม target bitrate เพิ่มเติมเพื่อให้ตอบสนองกับเครือข่ายมือถือที่แกว่งได้ชัดเจนขึ้น
+- Safari/PWA จากการทดสอบปัจจุบัน: 1920×1080 ได้สูงสุดประมาณ 30 fps ขณะที่ 1280×720 สามารถได้ถึง 60 fps บนอุปกรณ์ที่ทดสอบ

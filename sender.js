@@ -4,6 +4,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 let cameraStream=null,audioStream=null,outStream=null,vdo=null,currentFacing='environment',isPublishing=false,lastRemoteTs=0;
 let peerIds=new Set();
 let measuredCameraFps=0, frameMeterGeneration=0, telemetryTimer=null;
+let smartProfile='ปกติ';
 const video=$('#cameraVideo');
 
 const PRESETS={
@@ -94,7 +95,9 @@ function telemetrySnapshot(){
     measuredFps:Number(measuredCameraFps||0),
     cameraLabel:t?.label||'',
     fpsCapability:fpsCapabilityText(t),
-    publishing:!!isPublishing
+    publishing:!!isPublishing,
+    presetKey:$('#quality').value,
+    smartProfile
   };
 }
 
@@ -186,6 +189,17 @@ async function setZoom(value){
   await t.applyConstraints({advanced:[{zoom:v}]});$('#zoomRange').value=v;log(`Zoom ${v}`)
 }
 
+async function setQualityPreset(value,reason='Remote'){
+  if(!PRESETS[value])throw new Error(`ไม่พบ preset ${value}`);
+  if($('#quality').value===value){smartProfile=reason;$('#statSmartProfile').textContent=smartProfile;sendTelemetry();return}
+  $('#quality').value=value;
+  smartProfile=reason;
+  $('#statSmartProfile').textContent=smartProfile;
+  log(`${reason} → ${q().label}`);
+  if(cameraStream)await openCamera({facing:currentFacing,deviceId:$('#deviceSelect').value});
+  sendTelemetry();
+}
+
 async function buildOutStream(){
   if(!cameraStream)await openCamera({facing:currentFacing});
   await ensureMic();
@@ -227,6 +241,7 @@ async function handleRemote(d){
     if(d.command==='rear')await openCamera({facing:'environment'});
     if(d.command==='zoom')await setZoom(d.value);
     if(d.command==='device'&&d.deviceId)await openCamera({deviceId:d.deviceId});
+    if(d.command==='quality'&&d.value)await setQualityPreset(d.value,d.reason||'Remote quality');
   }catch(e){log(`Remote error: ${e.message}`)}
 }
 
@@ -252,10 +267,12 @@ $('#zoomRange').oninput=e=>setZoom(e.target.value).catch(x=>log(`Zoom error: ${x
 $('#zoomOutBtn').onclick=()=>{const z=$('#zoomRange');if(!z.disabled)setZoom(Number(z.value)-Number(z.step||.1))};
 $('#zoomInBtn').onclick=()=>{const z=$('#zoomRange');if(!z.disabled)setZoom(Number(z.value)+Number(z.step||.1))};
 $('#quality').onchange=async()=>{
+  smartProfile='Manual';$('#statSmartProfile').textContent=smartProfile;
   log(`เปลี่ยนคุณภาพเป็น ${q().label} / hint=${q().hint}`);
   if(cameraStream){try{await openCamera({facing:currentFacing,deviceId:$('#deviceSelect').value})}catch(e){log(`Quality switch error: ${e.message}`)}}
 };
 window.addEventListener('beforeunload',()=>stopAll());
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=050').catch(()=>{});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=060').catch(()=>{});
 $('#statHint').textContent=q().hint;
-log('v0.5 พร้อมใช้งาน — เพิ่ม Actual/Measured FPS Telemetry สำหรับทดสอบ 60 fps');
+$('#statSmartProfile').textContent=smartProfile;
+log('v0.6 พร้อมใช้งาน — รองรับ Smart Network และ Remote quality fallback');

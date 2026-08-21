@@ -1,18 +1,36 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OBS HQ Receiver v0.5</title><style>html,body{margin:0;background:#000;color:#fff;font:14px system-ui;height:100%}body{display:grid;place-items:center}</style></head><body><div id="msg">กำลังเปิด HQ WebRTC viewer…</div><script>
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>OBS Smart Receiver v0.6</title>
+  <style>
+    html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;color:#fff;font:14px system-ui}
+    #vdo{position:fixed;inset:0;width:100%;height:100%;border:0;background:#000}
+    #boot{position:fixed;inset:0;display:grid;place-items:center;background:#000;color:#9bb1c4;z-index:2}
+  </style>
+</head>
+<body>
+<div id="boot">กำลังเปิด WebRTC viewer…</div>
+<iframe id="vdo" allow="autoplay; fullscreen; microphone; camera" referrerpolicy="no-referrer"></iframe>
+<script>
 (()=>{
   const p=new URLSearchParams(location.search);
   const room=p.get('room')||'remote-cam-test';
   const stream=p.get('stream')||'cam01';
-  const bitrate=Math.max(500,Math.min(20000,parseInt(p.get('bitrate')||'8000',10)||8000));
+  const maxBitrate=Math.max(800,Math.min(20000,parseInt(p.get('bitrate')||'8000',10)||8000));
+  const minBitrate=Math.max(600,Math.min(maxBitrate,parseInt(p.get('minbitrate')||'1800',10)||1800));
   const buffer=Math.max(0,Math.min(1000,parseInt(p.get('buffer')||'200',10)||0));
   const codec=(p.get('codec')||'h264').toLowerCase();
   const preview=p.get('preview')==='1';
+  const smart=p.get('smart')==='1';
+  const iframe=document.getElementById('vdo');
+  const boot=document.getElementById('boot');
+
   const u=new URL('https://vdo.ninja/');
-  // Sender ถูก publish อยู่ใน Room ดังนั้น Viewer ต้องเข้าห้องเดียวกันด้วย
-  // Solo link เป็นรูปแบบมาตรฐานสำหรับดึงแขกหนึ่งตัวจาก Room เข้า OBS
   u.searchParams.set('room',room);
   u.searchParams.set('view',stream);
-  u.searchParams.set('videobitrate',String(bitrate));
+  u.searchParams.set('videobitrate',String(maxBitrate));
   u.searchParams.set('scale','100');
   u.searchParams.set('buffer',String(buffer));
   u.searchParams.set('keyframerate','2000');
@@ -21,6 +39,124 @@
   u.searchParams.set('solo','');
   if(codec)u.searchParams.set('codec',codec);
   if(preview)u.searchParams.set('mutespeaker','');
-  location.replace(u.toString());
+  iframe.src=u.toString();
+  iframe.addEventListener('load',()=>{boot.style.display='none';setTimeout(()=>setTarget(currentBitrate,'เริ่มต้น'),900)});
+
+  const baseSteps=[20000,16000,12000,10000,8000,6500,5000,4000,3200,2500,2000,1800,1500,1200,900,700];
+  const steps=[...new Set([maxBitrate,...baseSteps.filter(v=>v<maxBitrate&&v>minBitrate),minBitrate])].sort((a,b)=>b-a);
+  let stepIndex=0;
+  let currentBitrate=steps[0];
+  let badCount=0,criticalCount=0,goodCount=0,minBadCount=0;
+  let lastStats=null,lastChange=0,lastFallbackSignal=0,lastRestoreSignal=0;
+
+  function toNumber(v){const n=Number(v);return Number.isFinite(n)?n:null}
+  function walk(o,fn,depth=0){
+    if(!o||typeof o!=='object'||depth>10)return;
+    for(const [k,v] of Object.entries(o)){
+      fn(k,v,o);
+      if(v&&typeof v==='object')walk(v,fn,depth+1);
+    }
+  }
+  function parseStats(stats){
+    const out={bitrateKbps:null,lossPct:null,rttMs:null,jitterMs:null,availableKbps:null,resolution:null,fps:null};
+    const bitrates=[],losses=[],rtts=[],jitters=[],available=[],fpss=[];
+    walk(stats,(key,value)=>{
+      const k=String(key).toLowerCase();
+      const n=toNumber(value);
+      if(typeof value==='string' && k.includes('resolution') && /\d+\s*[x×]\s*\d+/i.test(value))out.resolution=value;
+      if(n==null)return;
+      if(k.includes('bitrate_in_kbps') || k==='bitrateinkbps' || k==='bitrate_kbps')bitrates.push(n);
+      if((k.includes('available')||k.includes('bandwidth')) && k.includes('bitrate')){
+        let x=n;
+        if(x>100000)x/=1000; // raw WebRTC bps -> kbps
+        available.push(x);
+      }
+      if(k.includes('packetloss_in_percentage') || k.includes('packet_loss_percentage') || k.includes('packetlosspercentage'))losses.push(n);
+      if((k==='packetloss'||k==='packet_loss') && n>=0){losses.push(n<=1?n*100:n)}
+      if(k.includes('round_trip_time') || k==='rtt' || k.includes('currentroundtriptime')){
+        let x=n;if(x>0&&x<10)x*=1000;rtts.push(x);
+      }
+      if((k==='jitter'||k.includes('jitter_in_ms')) && !k.includes('buffer')){
+        let x=n;if(x>0&&x<1)x*=1000;jitters.push(x);
+      }
+      if(k.includes('framespersecond') || k==='fps' || k.includes('frame_rate'))fpss.push(n);
+    });
+    if(bitrates.length)out.bitrateKbps=Math.max(...bitrates.filter(v=>v>=0));
+    if(losses.length)out.lossPct=Math.max(...losses.filter(v=>v>=0));
+    if(rtts.length)out.rttMs=Math.max(...rtts.filter(v=>v>=0));
+    if(jitters.length)out.jitterMs=Math.max(...jitters.filter(v=>v>=0));
+    if(available.length)out.availableKbps=Math.max(...available.filter(v=>v>=0));
+    if(fpss.length)out.fps=Math.max(...fpss.filter(v=>v>=0));
+    return out;
+  }
+  function classify(s){
+    const loss=s.lossPct, rtt=s.rttMs, jitter=s.jitterMs, avail=s.availableKbps;
+    if((loss!=null&&loss>=7)||(rtt!=null&&rtt>=800)||(jitter!=null&&jitter>=120)||(avail!=null&&avail<currentBitrate*.55))return 'critical';
+    if((loss!=null&&loss>=2.5)||(rtt!=null&&rtt>=450)||(jitter!=null&&jitter>=60)||(avail!=null&&avail<currentBitrate*.78))return 'weak';
+    if((loss!=null&&loss>=1)||(rtt!=null&&rtt>=250)||(jitter!=null&&jitter>=30))return 'fair';
+    return 'good';
+  }
+  function postParent(extra={}){
+    const payload={type:'remote-camera-receiver-stats',smart,room,stream,currentBitrate,maxBitrate,minBitrate,stepIndex,steps,state:lastStats?.state||'waiting',...lastStats,...extra};
+    try{if(parent!==window)parent.postMessage(payload,'*')}catch{}
+  }
+  function setTarget(kbps,reason){
+    kbps=Math.max(minBitrate,Math.min(maxBitrate,Math.round(kbps)));
+    if(kbps===currentBitrate && reason!=='เริ่มต้น')return;
+    currentBitrate=kbps;
+    stepIndex=Math.max(0,steps.indexOf(kbps));
+    try{iframe.contentWindow.postMessage({bitrate:kbps},'*')}catch{}
+    lastChange=Date.now();
+    postParent({action:'bitrate',reason});
+  }
+  function lower(reason,levels=1){
+    const next=Math.min(steps.length-1,stepIndex+levels);
+    if(next!==stepIndex){stepIndex=next;setTarget(steps[next],reason)}
+  }
+  function raise(reason){
+    const next=Math.max(0,stepIndex-1);
+    if(next!==stepIndex){stepIndex=next;setTarget(steps[next],reason)}
+  }
+  function evaluate(s){
+    const state=classify(s);s.state=state;lastStats=s;
+    if(!smart){postParent();return}
+    if(state==='critical'){
+      criticalCount++;badCount++;goodCount=0;
+      if(criticalCount>=2 && Date.now()-lastChange>1600){lower('สัญญาณวิกฤต',1);criticalCount=0;badCount=0}
+    }else if(state==='weak'){
+      badCount++;criticalCount=0;goodCount=0;
+      if(badCount>=3 && Date.now()-lastChange>2200){lower('สัญญาณอ่อน',1);badCount=0}
+    }else if(state==='fair'){
+      badCount=0;criticalCount=0;goodCount=0;
+    }else{
+      badCount=0;criticalCount=0;goodCount++;
+      if(goodCount>=9 && Date.now()-lastChange>9000){raise('สัญญาณฟื้นตัว');goodCount=0}
+    }
+
+    if(stepIndex===steps.length-1 && (state==='critical'||state==='weak'))minBadCount++; else minBadCount=0;
+    if(minBadCount>=5 && Date.now()-lastFallbackSignal>12000){
+      lastFallbackSignal=Date.now();minBadCount=0;postParent({fallbackRecommended:true,reason:'เน็ตยังอ่อนแม้ลด bitrate ถึงขั้นต่ำ'});
+    }
+    if(state==='good' && stepIndex<=Math.max(1,Math.floor(steps.length/3)) && goodCount>=7 && Date.now()-lastRestoreSignal>15000){
+      lastRestoreSignal=Date.now();postParent({restoreRecommended:true,reason:'เครือข่ายกลับมานิ่งแล้ว'});
+    }
+    postParent();
+  }
+
+  window.addEventListener('message',e=>{
+    if(e.source!==iframe.contentWindow)return;
+    const d=e.data;
+    if(d&&typeof d==='object'&&d.stats){
+      try{evaluate(parseStats(d.stats))}catch{}
+    }
+  });
+
+  if(smart){
+    setInterval(()=>{try{iframe.contentWindow.postMessage({getStats:true},'*')}catch{}},1250);
+  }else{
+    setInterval(()=>postParent(),3000);
+  }
 })();
-</script></body></html>
+</script>
+</body>
+</html>
