@@ -73,10 +73,15 @@ async function openCamera({facing=currentFacing,deviceId=''}={}){
   const sw=s.width||video.videoWidth||0,sh=s.height||video.videoHeight||0,sf=s.frameRate||0;
   $('#statCamera').textContent=`${sw||'?'}×${sh||'?'} @${sf?Math.round(sf):'?'}`;
   $('#camBadge').textContent=track.label||facing;
-  const nativeEnough=sw>=w&&sh>=h;
-  $('#statSharp').textContent=nativeEnough?'ต้นทางถึง preset':'ต้นทางต่ำกว่า Output';
-  $('#statSharp').className=nativeEnough?'goodtext':'warntext';
-  if(!nativeEnough)log(`⚠ กล้องจริง ${sw}×${sh} ต่ำกว่า Output ${w}×${h} — ภาพจะถูกขยายและอาจนิ่ม`);
+  const cameraLandscape=sw>=sh, outputLandscape=w>=h;
+  const orientedW=(cameraLandscape===outputLandscape)?sw:sh;
+  const orientedH=(cameraLandscape===outputLandscape)?sh:sw;
+  const nativeEnough=orientedW>=w&&orientedH>=h;
+  const orientationMismatch=cameraLandscape!==outputLandscape;
+  $('#statSharp').textContent=orientationMismatch?'หมุน iPhone ให้ตรง Output':(nativeEnough?'ต้นทางถึง preset':'ต้นทางต่ำกว่า Output');
+  $('#statSharp').className=(!orientationMismatch&&nativeEnough)?'goodtext':'warntext';
+  if(orientationMismatch) log(`⚠ กล้อง ${sw}×${sh} เป็น ${cameraLandscape?'แนวนอน':'แนวตั้ง'} แต่ Output ${w}×${h} เป็น ${outputLandscape?'แนวนอน':'แนวตั้ง'} — สำหรับ 1080p คมสุดให้หมุน iPhone แนวนอน`);
+  else if(!nativeEnough)log(`⚠ กล้องจริง ${sw}×${sh} ต่ำกว่า Output ${w}×${h} — ภาพจะถูกขยายและอาจนิ่ม`);
   else log(`✓ กล้องจริง ${sw}×${sh} ตรง/สูงกว่า Output`);
   await configureZoom(track);await listDevices();
   if(!raf)drawLoop();
@@ -102,6 +107,9 @@ async function buildOutStream(){
 
 async function startPublishing(){
   if(isPublishing)return;
+  $('#statRtc').textContent='กำลังโหลด SDK…';
+  await loadVDONinjaSDK(({index,total})=>{ $('#statRtc').textContent=`โหลด SDK ${index}/${total}`; log(`กำลังโหลด WebRTC SDK (${index}/${total})`); });
+  log(`VDO.Ninja SDK พร้อมใช้งาน v${window.VDONinjaSDK?.VERSION || '?'}`);
   if(!cameraStream)await openCamera({facing:currentFacing});
   const stream=await buildOutStream(),room=$('#room').value.trim(),streamID=$('#streamId').value.trim();
   if(!room||!streamID)throw new Error('กรุณาระบุ Room และ Stream ID');
@@ -130,5 +138,5 @@ $('#zoomOutBtn').onclick=()=>{const z=$('#zoomRange');if(!z.disabled)setZoom(Num
 $('#zoomInBtn').onclick=()=>{const z=$('#zoomRange');if(!z.disabled)setZoom(Number(z.value)+Number(z.step||.1))};
 $('#quality').onchange=async()=>{setupCanvas();log(`เปลี่ยนคุณภาพเป็น ${q().label}`);if(cameraStream){try{await openCamera({facing:currentFacing,deviceId:$('#deviceSelect').value})}catch(e){log(`Quality switch error: ${e.message}`)}}};
 window.addEventListener('beforeunload',()=>stopAll());
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=02').catch(()=>{});
-setupCanvas();log('v0.2 พร้อมใช้งาน — โหมดเริ่มต้น 1080p/24 HQ เน้นความคม');
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=03').catch(()=>{});
+setupCanvas();log('v0.3 พร้อมใช้งาน — เพิ่ม SDK fallback สำหรับ Safari/iPhone');

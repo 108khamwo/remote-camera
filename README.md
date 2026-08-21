@@ -1,4 +1,4 @@
-# Remote Camera Lab v0.2
+# Remote Camera Lab v0.3
 
 ต้นแบบส่งภาพ iPhone -> WebRTC -> OBS โดยใช้ VDO.Ninja SDK
 
@@ -32,7 +32,7 @@ Zoom slider จะทำงานเฉพาะเมื่อ browser เป�
 Prototype โหลด VDO.Ninja SDK จาก jsDelivr ตามเอกสารทางการ
 
 
-## v0.2 quality changes
+## v0.3 quality changes
 - Default 1080p/24 HQ to spend more bits per frame on detail.
 - Try exact 1920x1080 capture first, then fall back to the closest Safari-supported mode.
 - Show actual Camera resolution vs Output and warn when the source is being upscaled.
@@ -40,3 +40,9 @@ Prototype โหลด VDO.Ninja SDK จาก jsDelivr ตามเอกสา
 - Re-open the camera when changing quality.
 - Service worker changed to network-first and cache v02 to prevent stale development files.
 - Use VDO.Ninja salt compatibility consistently across sender/control/receiver.
+
+
+## v0.3
+- แก้ Safari/iPhone ขึ้น `Can't find variable: VDONinjaSDK`
+- โหลด VDO.Ninja SDK แบบ fallback 3 แหล่ง และตรวจ readiness ก่อน Publish/View
+- เพิ่มคำเตือนเมื่อกล้องเป็นแนวตั้งแต่ Output เป็น 16:9 แนวนอน เพราะทำให้ภาพถูก crop/ขยายและดูนิ่ม
