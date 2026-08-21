@@ -372,3 +372,69 @@ body.fullscreen-active .sender-call-controls{flex:none}
 #micIcon{display:block!important}
 #micMuteSlash{opacity:0;visibility:visible;transition:opacity .12s ease;stroke-width:2.2}
 .call-icon-btn.is-muted #micMuteSlash{opacity:1}
+
+/* v0.11.16 — Control Center icon refresh --------------------------------- */
+.control-ui-icon{
+  width:20px;
+  height:20px;
+  flex:0 0 20px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+  vector-effect:non-scaling-stroke;
+  pointer-events:none;
+}
+.control-ui-icon-brand{
+  width:23px;
+  height:23px;
+  flex-basis:23px;
+  color:#8fddfb;
+  stroke-width:1.8;
+}
+.control-brand{gap:10px}
+.camera-refresh,
+.control-message-open{
+  color:#dceef8;
+  border-color:#29465c !important;
+  background:linear-gradient(180deg,#102536,#0b1b29) !important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.025);
+  transition:border-color .16s ease,background .16s ease,color .16s ease,transform .08s ease;
+}
+.camera-refresh .control-ui-icon,
+.control-message-open .control-ui-icon{color:#7ddcff}
+.camera-refresh:hover,
+.camera-refresh:focus-visible,
+.control-message-open:hover,
+.control-message-open:focus-visible{
+  color:#fff;
+  border-color:#397493 !important;
+  background:linear-gradient(180deg,#133047,#0d2233) !important;
+  outline:none;
+}
+.camera-refresh:active,
+.control-message-open:active{transform:translateY(1px)}
+.camera-refresh{
+  min-width:100px;
+  min-height:42px;
+  border-radius:13px;
+  gap:9px;
+  font-size:13px;
+}
+.control-message-tools .control-message-open{
+  min-width:108px;
+  min-height:42px;
+  border-radius:13px;
+  gap:9px;
+  font-size:13px;
+  padding:8px 13px;
+}
+/* Retire the old CSS-drawn icons on Control Center. */
+.compact-control .ui-icon-refresh,
+.compact-control .ui-icon-message,
+.compact-control .ui-icon-monitor{display:none!important}
+@media(max-width:700px){
+  .camera-refresh{min-width:96px}
+  .control-message-tools .control-message-open{min-width:104px}
+}

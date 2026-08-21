@@ -1,7 +1,10 @@
 <!doctype html>
-<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="styles.css?v=01114"><title>Control Center</title></head>
+<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="styles.css?v=01116"><title>Control Center</title></head>
 <body><main class="wrap compact-control">
-<div class="topbar"><div class="brand control-brand"><span class="ui-icon ui-icon-monitor" aria-hidden="true"></span><span>Control Center</span> <span class="version">v0.11.14</span></div><a class="badge" href="index.html">หน้าหลัก</a></div>
+<div class="topbar"><div class="brand control-brand"><svg class="control-ui-icon control-ui-icon-brand" viewBox="0 0 24 24" aria-hidden="true">
+  <rect x="3" y="4" width="18" height="13" rx="2.5"></rect>
+  <path d="M8.5 21h7"></path><path d="M12 17v4"></path>
+</svg><span>Control Center</span> <span class="version">v0.11.16</span></div><a class="badge" href="index.html">หน้าหลัก</a></div>
 
 <div class="card camera-bar-card">
   <div class="camera-picker-head">
@@ -9,11 +12,17 @@
       <div class="section-title">เลือกกล้อง</div>
       <div id="discoveryStatus" class="mini">กำลังค้นหา…</div>
     </div>
-    <button id="refreshDiscovery" class="ghost camera-refresh" type="button" aria-label="รีเฟรชและค้นหากล้องใหม่"><span class="ui-icon ui-icon-refresh" aria-hidden="true"></span><span>รีเฟรช</span></button>
+    <button id="refreshDiscovery" class="ghost camera-refresh" type="button" aria-label="รีเฟรชและค้นหากล้องใหม่"><svg class="control-ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+  <path d="M20 7v5h-5"></path>
+  <path d="M18.2 8.2A7.5 7.5 0 1 0 19.3 15"></path>
+</svg><span>รีเฟรช</span></button>
   </div>
   <div class="control-message-tools">
     <div id="cameraChips" class="camera-chips camera-chips-main"></div>
-    <button id="controlMessageOpen" class="ghost control-message-open" type="button"><span class="ui-icon ui-icon-message" aria-hidden="true"></span><span>ข้อความ</span></button>
+    <button id="controlMessageOpen" class="ghost control-message-open" type="button"><svg class="control-ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+  <path d="M20 15a3 3 0 0 1-3 3H9l-5 3v-6a3 3 0 0 1-1-2.2V7a3 3 0 0 1 3-3h11a3 3 0 0 1 3 3z"></path>
+  <path d="M8 10h.01M12 10h.01M16 10h.01"></path>
+</svg><span>ข้อความ</span></button>
   </div>
   <select id="cameraSelect" class="hidden" aria-hidden="true" tabindex="-1"><option>กำลังค้นหา…</option></select>
   <div id="controlMessagePanel" class="control-message-panel" hidden>
@@ -79,4 +88,4 @@
 </aside>
 </div></main>
 <div id="controlMessageToast" class="control-message-toast" hidden><strong id="controlMessageToastFrom">ข้อความจากกล้อง</strong><div id="controlMessageToastText"></div></div>
-<script src="sdk-loader.js?v=01114"></script><script src="control.js?v=01114"></script></body></html>
+<script src="sdk-loader.js?v=01116"></script><script src="control.js?v=01116"></script></body></html>

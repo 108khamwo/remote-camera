@@ -275,12 +275,30 @@ function sendMessageAckToSender(d,sourceUuid=''){
     else discoveryVdo.sendData(ack,{preference:'any'});
   }catch{}
 }
+function revealMessagePanelForIncoming(){
+  const panel=$('#controlMessagePanel');
+  if(!panel)return false;
+  const wasHidden=panel.hidden;
+  if(wasHidden){
+    panel.hidden=false;
+    const openBtn=$('#controlMessageOpen');
+    if(openBtn)openBtn.setAttribute('aria-expanded','true');
+  }
+  const toast=$('#controlMessageToast');if(toast)toast.hidden=true;
+  requestAnimationFrame(()=>{
+    const history=$('#controlMessageHistory');
+    if(history)history.scrollTop=0;
+    if(wasHidden)panel.scrollIntoView({behavior:'smooth',block:'nearest'});
+  });
+  return wasHidden;
+}
 function handleIncomingSenderMessage(d,sourceUuid=''){
   if(d?.targetRole&&d.targetRole!=='control')return;
   const text=cleanMessageText(d?.text);if(!text)return;
   const from=cleanMessageText(d?.cameraName)||cleanId(d?.streamID)||'กล้อง';
   addControlMessage(text,{mine:false,from,ts:Number(d?.ts)||Date.now(),messageId:String(d?.messageId||'')});
-  showControlMessageToast(text,from);log(`ข้อความจาก ${from}: ${text}`);
+  revealMessagePanelForIncoming();
+  log(`ข้อความจาก ${from}: ${text}`);
   sendMessageAckToSender(d,sourceUuid);
 }
 function handleMessageAck(d){
@@ -488,7 +506,7 @@ setTimeout(()=>maybeAutoOpen(),350);
 ['bitrate','buffer','codec','networkMode','smartMin','smartFallback'].forEach(id=>$('#'+id).addEventListener('change',()=>{updateObs();renderMultiObs();reloadPreview()}));
 $('#cameraSelect').addEventListener('change',e=>selectCamera(e.target.value,{fromUser:true}).catch(x=>log(`Select error: ${x.message}`)));
 $('#cameraChips').addEventListener('click',e=>{const b=e.target.closest('[data-id]');if(b){e.preventDefault();selectCamera(b.dataset.id,{fromUser:true}).catch(x=>log(`Select error: ${x.message}`))}});
-$('#controlMessageOpen').onclick=()=>{$('#controlMessagePanel').hidden=!$('#controlMessagePanel').hidden;renderControlMessages()};
+$('#controlMessageOpen').onclick=()=>{const p=$('#controlMessagePanel');p.hidden=!p.hidden;$('#controlMessageOpen').setAttribute('aria-expanded',String(!p.hidden));renderControlMessages()};
 $('#controlMessageSendSelected').onclick=()=>{const input=$('#controlMessageInput');if(sendControlMessage(input.value,{broadcast:false}))input.value=''};
 $('#controlMessageSendAll').onclick=()=>{const input=$('#controlMessageInput');if(sendControlMessage(input.value,{broadcast:true}))input.value=''};
 $('#controlMessageInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#controlMessageSendAll').click()}});
@@ -513,4 +531,4 @@ $('#copy').onclick=async()=>{if(!$('#obsUrl').value)return;await navigator.clipb
 setInterval(markOffline,2000);
 window.addEventListener('beforeunload',()=>{try{discoveryCtl?.stop?.()}catch{};try{discoveryVdo?.stopPublishing?.()}catch{};try{discoveryVdo?.disconnect?.()}catch{}});
 startDiscovery().catch(e=>{log(`Auto Discovery error: ${e.message}`);$('#discoveryStatus').innerHTML='<b>เชื่อมไม่สำเร็จ</b><span>กด “ค้นหากล้องใหม่” เพื่อลองอีกครั้ง</span>'});
-log(`v0.11.11 พร้อม — Control Data Hub + Preview เปิดจาก Stream ID โดยตรง • Offline grace ${OFFLINE_MS/1000}s`);
+log(`v0.11.16 พร้อม — Control Data Hub + Preview เปิดจาก Stream ID โดยตรง • Offline grace ${OFFLINE_MS/1000}s`);
