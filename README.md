@@ -1,44 +1,15 @@
-# Remote Camera PWA v0.11.0
+# Remote Camera PWA v0.11.9
 
-## Sender Call UI
+- Message Core restored from v0.11.2 (known-good baseline).
+- Control primary message action now broadcasts to all cameras; Enter also sends to all.
+- “Send only this camera” remains available as a secondary action.
+- Fullscreen code is isolated in `fullscreen.js` so it does not modify the message core.
+- Sender top icons use one consistent SVG line-icon set.
+- Network-first service worker for active development.
 
-หน้า Sender ถูกออกแบบใหม่ให้เรียบง่ายแบบหน้ากล้อง/วิดีโอคอล โดยไม่ได้คัดลอกหน้าตา CM108Live:
 
-- ภาพกล้องเป็นจุดหลักของหน้าจอ
-- ปุ่มใหญ่ `ส่งภาพ / หยุดส่ง` ปุ่มเดียว
-- ปุ่ม `- Zoom / + Zoom` แบบกดค้าง และค่าเริ่มต้น Zoom = ช้า
-- ปุ่ม 0.5x / 1x ยังค่อย ๆ ซูมแบบสมูท
-- กล้องหน้า/หลัง คุณภาพ ชื่อกล้อง และข้อมูลตรวจสอบย้ายไปอยู่ใน Settings
-
-## ฟังก์ชันที่นำแนวคิดจาก CM108Live มาใช้
-
-นำมาเฉพาะระบบ ไม่ได้นำ UI เดิมมาใช้:
-
-### ข้อความ Control ↔ Sender
-
-- Control ส่งข้อความถึงกล้องที่เลือก หรือส่งทุกกล้องได้
-- Sender แสดงข้อความเป็น Toast บนภาพ
-- Sender ตอบกลับได้ และมีคำตอบด่วน: รับทราบ / รอสักครู่ / พร้อมแล้ว
-- ใช้ WebRTC data channel ของระบบปัจจุบัน ไม่พึ่ง iframe chat แบบโปรเจกต์เดิม
-
-### พักหน้าจอ
-
-- ปุ่มพระจันทร์บน Sender เปิดหน้าจอดำเต็มจอ
-- Camera/WebRTC ยังคงทำงานและส่งภาพ/เสียงต่อ
-- ซ่อนการ render preview/UI เพื่อลดภาระและช่วยประหยัดพลังงาน โดยเฉพาะจอ OLED
-- ระบบพยายามใช้ Screen Wake Lock เพื่อไม่ให้ OS ดับหน้าจอจน Safari/PWA ถูกพัก
-- แตะหน้าจอดำเพื่อกลับ
-
-> หมายเหตุ: นี่เป็น “พักภาพหน้าจอ” ไม่ใช่ปิดจอฮาร์ดแวร์จริง เพราะการปิด/ล็อกจอบนมือถืออาจทำให้ browser ระงับกล้องหรือ WebRTC
-
-## Control Center
-
-- Auto Discovery หลายกล้องยังทำงานเหมือนเดิม
-- Preview เปิดอัตโนมัติเมื่อมี Stream
-- Manual Network เป็นค่าเริ่มต้น
-- Smart Network, Bitrate, Buffer และ OBS URL ยังอยู่ครบ
-- เพิ่มปุ่มข้อความ โดยส่งได้เฉพาะกล้องที่เลือกหรือ Broadcast ทุกกล้อง
-
-## อัปเดต
-
-อัปโหลดไฟล์ทั้งหมดทับเวอร์ชันเดิมบน GitHub Pages แล้วปิด/เปิด Sender และ Control Center ใหม่ เพราะ Service Worker cache เปลี่ยนเป็น v0110
+## v0.11.9
+- Rebuilt messaging as one Control data publisher with every Sender explicitly viewing it.
+- Camera presence/telemetry now arrives over the same deterministic data channel.
+- Video/OBS stays independent.
+- Send All remains the primary action; selected-camera messages are filtered by targetStream.
