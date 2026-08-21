@@ -3,8 +3,12 @@ const logEl=$('#log');
 let discoveryVdo=null, discoveryCtl=null, discoveryTimer=null;
 let connectedStreamId='', lastTelemetry=null, smartFallbackActive=false, smartOriginalPreset=null,lastSmartQualityChange=0;
 let cameras=[];
-const CAMERA_STORE='remoteCamAutoCamerasV2';
-const OFFLINE_MS=7000;
+const CAMERA_STORE='remoteCamAutoCamerasV3';
+const LEGACY_CAMERA_STORE='remoteCamAutoCamerasV2';
+// Presence is confirmed by telemetry from the actual Sender. Do not mark a camera
+// offline just because one transient WebRTC/data peer disconnects during recovery.
+const OFFLINE_MS=12000;
+const discoveryCandidates=new Map();
 
 function log(m){logEl.textContent+=`[${new Date().toLocaleTimeString()}] ${m}\n`;logEl.scrollTop=logEl.scrollHeight}
 function cleanId(v){return String(v||'').trim().replace(/[^\w]/g,'_')}
@@ -18,13 +22,16 @@ function activeId(){return cleanId($('#streamId').value||$('#cameraSelect').valu
 function activeCamera(){return cameras.find(c=>c.id===activeId())||null}
 function activeName(){const c=activeCamera();return c?.name||activeId()||'กล้อง'}
 function saveCameras(){
-  const persist=cameras.map(({id,name,platform,browser})=>({id,name,platform,browser}));
+  const persist=cameras.map(({id,deviceId,name,platform,browser})=>({id,deviceId,name,platform,browser}));
   localStorage.setItem(CAMERA_STORE,JSON.stringify(persist));
 }
 function loadCameras(){
+  // v0.9 could persist provisional listing peers as if they were cameras. Start a
+  // clean v3 registry once so those ghost/duplicate entries do not survive upgrade.
+  if(!localStorage.getItem(CAMERA_STORE)) localStorage.removeItem(LEGACY_CAMERA_STORE);
   try{cameras=JSON.parse(localStorage.getItem(CAMERA_STORE)||'[]')}catch{cameras=[]}
   if(!Array.isArray(cameras))cameras=[];
-  cameras=cameras.filter(x=>x?.id&&cleanId(x.id).startsWith('cam_')).map(x=>({id:cleanId(x.id),name:String(x.name||x.id),platform:x.platform||'',browser:x.browser||'',online:false,lastSeen:0,uuid:''}));
+  cameras=cameras.filter(x=>x?.id&&cleanId(x.id).startsWith('cam_')).map(x=>({id:cleanId(x.id),deviceId:cleanId(x.deviceId||''),name:String(x.name||x.id),platform:x.platform||'',browser:x.browser||'',online:false,lastSeen:0,uuid:''}));
 }
 function parseLabel(label,id){
   const raw=String(label||'');
@@ -36,15 +43,21 @@ function parseLabel(label,id){
 }
 function upsertCamera(info,{render=true}={}){
   const id=cleanId(info?.id||info?.streamID||info?.streamId||'');
+  const deviceId=cleanId(info?.deviceId||info?.deviceID||'');
   if(!id.startsWith('cam_'))return null;
-  let c=cameras.find(x=>x.id===id);
-  if(!c){c={id,name:id,platform:'',browser:'',online:false,lastSeen:0,uuid:''};cameras.push(c);log(`พบกล้องใหม่อัตโนมัติ: ${id}`)}
+  // Device ID is the stable identity; stream ID is its current video endpoint.
+  // If a Sender reconnects with a changed stream ID, merge it into the same card.
+  let c=deviceId?cameras.find(x=>x.deviceId===deviceId):null;
+  if(!c)c=cameras.find(x=>x.id===id);
+  if(!c){c={id,deviceId,name:id,platform:'',browser:'',online:false,lastSeen:0,uuid:''};cameras.push(c);log(`พบกล้องจริงจาก Sender: ${id}`)}
+  else if(c.id!==id)c.id=id;
+  if(deviceId)c.deviceId=deviceId;
   if(info.label){const p=parseLabel(info.label,id);if(p.name)c.name=p.name;if(p.platform)c.platform=p.platform;if(p.browser)c.browser=p.browser}
   if(info.name)c.name=String(info.name);
   if(info.platform)c.platform=String(info.platform);
   if(info.browser)c.browser=String(info.browser);
   if(info.uuid)c.uuid=String(info.uuid);
-  c.online=info.online!==false;
+  c.online=true;
   c.lastSeen=Date.now();
   saveCameras();
   if(render)renderRegistry();
@@ -110,7 +123,7 @@ function reloadPreview(){const f=$('#remoteFrame');if(connectedStreamId&&f.src&&
 
 function setTelemetry(d,uuid=''){
   const id=cleanId(d?.streamID||'');if(!id)return;
-  const c=upsertCamera({id,name:d?.cameraName,platform:d?.platform,browser:d?.browser,uuid,online:true},{render:false});
+  const c=upsertCamera({id,deviceId:d?.deviceID||d?.deviceId,name:d?.cameraName,platform:d?.platform,browser:d?.browser,uuid,online:true},{render:false});
   if(c)renderRegistry(id===activeId()?id:activeId());
   if(id!==activeId())return;
   lastTelemetry=d;const req=d?.requested||{},act=d?.actual||{};const reqF=Number(req.fps||0),actF=Number(act.fps||0),meas=Number(d?.measuredFps||0);
@@ -135,7 +148,17 @@ function collectListing(value,out=[],depth=0){
   Object.entries(value).forEach(([k,v])=>{if(!['streamID','streamId','streamid','stream','label','name','uuid','UUID'].includes(k))collectListing(v,out,depth+1)});
   return out;
 }
-function handleListing(e){const list=collectListing(e?.detail??e);let added=false;for(const item of list){upsertCamera(item,{render:false});added=true}if(added)renderRegistry()}
+function rememberDiscoveryCandidate(item){
+  if(!item?.id)return;
+  discoveryCandidates.set(item.id,{...item,lastSeen:Date.now()});
+}
+function handleListing(e){
+  // A VDO.Ninja room can expose several transient peer/listing records for one
+  // physical phone. Listings are discovery candidates only; a camera is shown
+  // after its Sender telemetry confirms streamID + stable deviceID.
+  const list=collectListing(e?.detail??e);
+  for(const item of list)rememberDiscoveryCandidate(item);
+}
 
 async function startDiscovery(){
   if(discoveryVdo)return;
@@ -145,8 +168,21 @@ async function startDiscovery(){
   discoveryVdo=new VDONinjaSDK({autoRecover:true,autoRelay:true,salt:'vdo.ninja',label:'Remote Camera Control Center'});
   discoveryVdo.addEventListener('connected',()=>{log('Auto Discovery signaling connected')});
   discoveryVdo.addEventListener('listing',handleListing);discoveryVdo.addEventListener('peerListing',handleListing);discoveryVdo.addEventListener('room-peer-listing',handleListing);
-  discoveryVdo.addEventListener('peerConnected',e=>{const d=e.detail||{};if(d.streamID||d.streamId)upsertCamera({id:d.streamID||d.streamId,label:d.label,uuid:d.uuid,online:true});});
-  discoveryVdo.addEventListener('peerDisconnected',e=>{const uuid=extractUuid(e);const c=cameras.find(x=>x.uuid===uuid);if(c){c.online=false;renderRegistry()}});
+  discoveryVdo.addEventListener('peerConnected',e=>{
+    const d=e.detail||{};const id=cleanId(d.streamID||d.streamId||'');
+    if(id.startsWith('cam_')){
+      rememberDiscoveryCandidate({id,label:d.label||'',uuid:d.uuid||'',online:true});
+      // Ask the actual Sender to identify itself. Do not render this peer yet.
+      setTimeout(()=>{try{discoveryVdo?.sendData({type:'remote-camera-discover',targetStream:id,ts:Date.now()},{streamID:id,allowFallback:true})}catch{}},120);
+    }
+  });
+  discoveryVdo.addEventListener('peerDisconnected',e=>{
+    const uuid=extractUuid(e);
+    // A transient data/viewer peer can disconnect while the published camera is
+    // still alive. Clear the stale peer UUID but let telemetry timeout decide
+    // ONLINE/OFFLINE, preventing presence from blinking during auto-recovery.
+    const c=cameras.find(x=>x.uuid===uuid);if(c)c.uuid='';
+  });
   discoveryVdo.addEventListener('peerLatency',e=>{const uuid=extractUuid(e);const c=cameras.find(x=>x.uuid===uuid);if(c?.id===activeId()){const v=e.detail?.latency??e.detail?.rtt??e.detail?.value;if(v!=null)$('#latency').textContent=`${Math.round(v)} ms`}});
   discoveryVdo.addEventListener('dataReceived',e=>{const d=extractData(e);if(d?.type==='remote-camera-telemetry')setTelemetry(d,extractUuid(e));});
   discoveryVdo.addEventListener('connectionRecovered',()=>log('Auto Discovery recovered'));
@@ -167,7 +203,8 @@ async function restartDiscovery(){
   try{await discoveryCtl?.stop?.()}catch{}
   try{await discoveryVdo?.disconnect?.()}catch{}
   discoveryCtl=null;discoveryVdo=null;
-  cameras.forEach(c=>{c.online=false;c.uuid=''});renderRegistry();
+  discoveryCandidates.clear();
+  cameras.forEach(c=>{c.online=false;c.uuid='';c.lastSeen=0});renderRegistry();
   await startDiscovery();
 }
 
@@ -234,4 +271,4 @@ $('#copy').onclick=async()=>{if(!$('#obsUrl').value)return;await navigator.clipb
 setInterval(markOffline,2000);
 window.addEventListener('beforeunload',()=>{try{discoveryCtl?.stop?.()}catch{};try{discoveryVdo?.disconnect?.()}catch{}});
 startDiscovery().catch(e=>{log(`Auto Discovery error: ${e.message}`);$('#discoveryStatus').innerHTML='<b>เชื่อมไม่สำเร็จ</b><span>กด “ค้นหากล้องใหม่” เพื่อลองอีกครั้ง</span>'});
-log(`v0.9 พร้อม — Auto Room ${systemRoom()} / Auto Discovery / ไม่ต้องกรอก Stream ID`);
+log(`v0.9.1 พร้อม — Discovery ยืนยันจาก Sender / รวม peer ซ้ำ / Offline grace ${OFFLINE_MS/1000}s`);

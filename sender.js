@@ -13,6 +13,8 @@ const IS_IOS=/iPhone|iPad|iPod/i.test(UA) || (navigator.platform==='MacIntel' &&
 const IS_SAMSUNG=/SamsungBrowser/i.test(UA);
 const PLATFORM=IS_ANDROID?'Android':IS_IOS?'iOS':'Browser';
 const BROWSER=IS_SAMSUNG?'Samsung Internet':/CriOS|Chrome/i.test(UA)?'Chrome':/Safari/i.test(UA)?'Safari':'Web Browser';
+const DEVICE_KEY='remoteCamPhysicalDeviceIdV1';
+let DEVICE_ID='';
 function shortId(n=8){try{return crypto.randomUUID().replace(/-/g,'').slice(0,n)}catch{return (Math.random().toString(36).slice(2)+Date.now().toString(36)).slice(0,n)}}
 function normId(v){return String(v||'').trim().replace(/[^\w]/g,'_')}
 function systemRoom(){
@@ -22,6 +24,9 @@ function systemRoom(){
 }
 function platformSlug(){return IS_IOS?'ios':IS_ANDROID?'android':'web'}
 function initIdentity(){
+  let stable=normId(localStorage.getItem(DEVICE_KEY)||'');
+  if(!stable.startsWith('dev_'))stable=`dev_${platformSlug()}_${shortId(10)}`;
+  DEVICE_ID=stable;localStorage.setItem(DEVICE_KEY,DEVICE_ID);
   const savedStream=localStorage.getItem('remoteCamStreamId');
   const savedName=localStorage.getItem('remoteCamName');
   let id=normId(savedStream||'');
@@ -39,7 +44,7 @@ function initIdentity(){
   $('#cameraName').addEventListener('input',()=>localStorage.setItem('remoteCamName',$('#cameraName').value.trim()));
 }
 function generateNewStreamId(){const id=`cam_${platformSlug()}_${shortId(8)}`;$('#streamId').value=id;if($('#streamIdView'))$('#streamIdView').value=id;localStorage.setItem('remoteCamStreamId',id);$('#cameraName').value=`${PLATFORM} ${id.slice(-4).toUpperCase()}`;localStorage.setItem('remoteCamName',$('#cameraName').value.trim());log(`สร้าง Device ID ใหม่อัตโนมัติ: ${id}`)}
-function publisherLabel(){const name=($('#cameraName').value.trim()||$('#streamId').value).replace(/\|/g,' ');return `RCAM|${name}|${PLATFORM}|${BROWSER}`}
+function publisherLabel(){const name=($('#cameraName').value.trim()||$('#streamId').value).replace(/\|/g,' ');return `RCAM2|${DEVICE_ID}|${name}|${PLATFORM}|${BROWSER}`}
 
 // Smooth Zoom: Safari/PWA does not expose AVFoundation's native zoom ramp,
 // so we emulate a camera-like ramp by applying many small hardware-zoom steps.
@@ -214,6 +219,7 @@ function telemetrySnapshot(){
     cameraName:$('#cameraName').value.trim()||$('#streamId').value.trim(),
     platform:PLATFORM,
     browser:BROWSER,
+    deviceID:DEVICE_ID,
     streamID:normId($('#streamId').value.trim()),
     fpsCapability:fpsCapabilityText(t),
     publishing:!!isPublishing,
@@ -421,4 +427,4 @@ $('#statHint').textContent=q().hint;
 $('#statSmartProfile').textContent=smartProfile;
 initIdentity();
 $('#newStreamId').onclick=generateNewStreamId;
-log(`v0.9 พร้อมใช้งาน — ${PLATFORM}/${BROWSER}, Auto Room ${systemRoom()}, Device ID ${$('#streamId').value}`);
+log(`v0.9.1 พร้อมใช้งาน — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);

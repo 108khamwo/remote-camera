@@ -1,8 +1,18 @@
-# Remote Camera PWA v0.9 — Auto Discovery
+# Remote Camera PWA v0.9.1 — Auto Discovery
+
+
+## แก้ปัญหา Discovery ซ้ำ/Online กระพริบใน v0.9.1
+
+- Control Center ไม่เอา room listing หรือ transient peer มาแสดงเป็นกล้องทันทีอีกแล้ว
+- จะแสดงกล้องเมื่อได้รับ telemetry จาก Sender ตัวจริงเท่านั้น
+- Sender มี `deviceID` ถาวรใน localStorage เพื่อรวม peer/stream ของมือถือเครื่องเดียวกัน
+- `peerDisconnected` ไม่สั่ง Offline ทันที เพราะ WebRTC อาจ reconnect เอง
+- สถานะ Offline ตัดสินจากการหายของ telemetry ต่อเนื่อง 12 วินาที
+- ใช้ registry store รุ่นใหม่เพื่อไม่ดึง ghost camera ที่ v0.9 เคยบันทึกไว้
 
 ต้นแบบส่งภาพระยะไกลจาก iPhone/Android → WebRTC → OBS
 
-## ใหม่ใน v0.9
+## ใหม่ใน v0.9.1
 - ไม่ต้องกรอก Room หรือ Stream ID ในการใช้งานปกติ
 - Sender สร้าง Device/Stream ID ถาวรต่อเบราว์เซอร์ให้อัตโนมัติ
 - Room สร้างจาก hostname + ชื่อโปรเจกต์ จึงเหมือนกันบนทุกเครื่องที่เปิดเว็บไซต์เดียวกัน
