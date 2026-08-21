@@ -8,6 +8,13 @@ let peerIds=new Set();
 let measuredCameraFps=0, frameMeterGeneration=0, telemetryTimer=null;
 let smartProfile='ปกติ';
 const video=$('#cameraVideo');
+function updateSimpleStatus(){
+  const el=$('#senderSimpleStatus'); if(!el)return;
+  if(isPublishing){el.textContent='กำลังส่งภาพ';el.className='goodtext';return}
+  if(cameraStream?.getVideoTracks?.().some(t=>t.readyState==='live')){el.textContent='กล้องพร้อม';el.className='goodtext';return}
+  el.textContent='พร้อมเปิดกล้อง';el.className='';
+}
+
 const UA=navigator.userAgent||'';
 const IS_ANDROID=/Android/i.test(UA);
 const IS_IOS=/iPhone|iPad|iPod/i.test(UA) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
@@ -47,7 +54,7 @@ function initIdentity(){
 function generateNewStreamId(){const id=`cam_${platformSlug()}_${shortId(8)}`;$('#streamId').value=id;if($('#streamIdView'))$('#streamIdView').value=id;localStorage.setItem('remoteCamStreamId',id);$('#cameraName').value=`${PLATFORM} ${id.slice(-4).toUpperCase()}`;localStorage.setItem('remoteCamName',$('#cameraName').value.trim());log(`สร้าง Device ID ใหม่อัตโนมัติ: ${id}`)}
 function publisherLabel(){const name=($('#cameraName').value.trim()||$('#streamId').value).replace(/\|/g,' ');return `RCAM2|${DEVICE_ID}|${name}|${PLATFORM}|${BROWSER}`}
 
-// Smooth Zoom v0.10.0
+// Smooth Zoom v0.10.1
 // Adds 0.5× / 1× smooth return presets when the camera capability range supports them.
 // PWA browsers do not expose AVFoundation/Camera2 native ramping consistently.
 // Strategy:
@@ -379,7 +386,7 @@ async function openCamera({facing=currentFacing,deviceId=''}={}){
       }
     }
 
-    cameraStream=nextStream;
+    cameraStream=nextStream;updateSimpleStatus();
     video.srcObject=nextStream;await video.play();
     startFrameMeter();updateCameraStatus(nextTrack);await configureZoom(nextTrack);await listDevices();
     if(oldStream&&oldStream!==nextStream){oldStream.getTracks().forEach(t=>{if(t!==oldTrack||t.readyState!=='ended')try{t.stop()}catch{}})}
@@ -428,14 +435,14 @@ async function startPublishing(){
   if(!room||!streamID)throw new Error('กรุณาระบุ Room และ Stream ID');
   vdo=new VDONinjaSDK({autoRecover:true,autoRelay:true,salt:'vdo.ninja'});
   vdo.addEventListener('connected',()=>{$('#statRtc').textContent='signaling connected';log('เชื่อม signaling แล้ว')});
-  vdo.addEventListener('publishing',()=>{isPublishing=true;$('#liveBadge').textContent='LIVE';$('#liveBadge').classList.add('ok');$('#statRtc').textContent='PUBLISHING';log('เริ่มส่ง WebRTC แล้ว');startTelemetry()});
+  vdo.addEventListener('publishing',()=>{isPublishing=true;$('#liveBadge').textContent='LIVE';updateSimpleStatus();$('#liveBadge').classList.add('ok');$('#statRtc').textContent='PUBLISHING';log('เริ่มส่ง WebRTC แล้ว');startTelemetry()});
   vdo.addEventListener('peerConnected',e=>{const id=e.detail?.uuid;if(id){peerIds.add(id);updatePeerCount();log(`Viewer connected (${peerIds.size})`);setTimeout(sendTelemetry,250)}});
   vdo.addEventListener('peerDisconnected',e=>{const id=e.detail?.uuid;if(id){peerIds.delete(id);updatePeerCount();log(`Viewer disconnected (${peerIds.size})`)}});
   vdo.addEventListener('connectionRecovered',()=>log('WebRTC recovered'));
   vdo.addEventListener('connectionFailed',()=>log('WebRTC connection failed'));
   const onData=e=>{const d=e.detail?.data??e.detail??e.data;const uuid=e.detail?.uuid??e.uuid??'';if(d&&typeof d==='object')handleRemote(d,uuid)};vdo.addEventListener('dataReceived',onData);
   await vdo.connect();await vdo.joinRoom({room});await vdo.publish(stream,{room,streamID,label:publisherLabel()});
-  isPublishing=true;$('#liveBadge').textContent='LIVE';$('#liveBadge').classList.add('ok');$('#statRtc').textContent='PUBLISHING';startTelemetry();
+  isPublishing=true;$('#liveBadge').textContent='LIVE';updateSimpleStatus();$('#liveBadge').classList.add('ok');$('#statRtc').textContent='PUBLISHING';startTelemetry();
 }
 
 
@@ -486,7 +493,7 @@ async function stopAll(){
   if(audioStream){audioStream.getTracks().forEach(t=>t.stop());audioStream=null}
   outStream=null;
   video.srcObject=null;
-  $('#liveBadge').textContent='OFFLINE';$('#liveBadge').classList.remove('ok');$('#statRtc').textContent='OFFLINE';$('#statMic').textContent='-';log('หยุดทั้งหมด')
+  $('#liveBadge').textContent='OFFLINE';updateSimpleStatus();$('#liveBadge').classList.remove('ok');$('#statRtc').textContent='OFFLINE';$('#statMic').textContent='-';log('หยุดทั้งหมด')
 }
 
 $('#startCamera').onclick=()=>openCamera({facing:currentFacing}).catch(e=>log(`Camera error: ${e.message}`));
@@ -531,9 +538,9 @@ $('#quality').onchange=async()=>{
   if(cameraStream){try{await openCamera({facing:currentFacing,deviceId:explicitDeviceId})}catch(e){log(`Quality switch error: ${e.message}`)}}
 };
 window.addEventListener('beforeunload',()=>stopAll());
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=0100').catch(()=>{});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=0101').catch(()=>{});
 $('#statHint').textContent=q().hint;
 $('#statSmartProfile').textContent=smartProfile;
-initIdentity();
+initIdentity();updateSimpleStatus();
 $('#newStreamId').onclick=generateNewStreamId;
-log(`v0.10.0 พร้อมใช้งาน — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
+log(`v0.10.1 พร้อมใช้งาน — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
