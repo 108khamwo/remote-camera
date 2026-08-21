@@ -1,7 +1,7 @@
 const $=s=>document.querySelector(s); const logEl=$('#log');
 function log(m){const t=new Date().toLocaleTimeString();logEl.textContent+=`[${t}] ${m}\n`;logEl.scrollTop=logEl.scrollHeight}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-let cameraStream=null,audioStream=null,outStream=null,vdo=null,messageVdo=null,messageReady=false,currentFacing='environment',isPublishing=false,lastRemoteTs=0;
+let cameraStream=null,audioStream=null,outStream=null,vdo=null,currentFacing='environment',isPublishing=false,lastRemoteTs=0;
 const processedRemoteCommands=new Map();
 let explicitDeviceId='', openingCamera=false;
 let peerIds=new Set();
@@ -9,8 +9,6 @@ let measuredCameraFps=0, frameMeterGeneration=0, telemetryTimer=null;
 let smartProfile='ปกติ';
 let wakeLockSentinel=null, restHintTimer=null, messageToastTimer=null;
 const senderMessages=[];
-const processedMessageIds=new Map();const pendingSenderMessageAcks=new Map();let senderMessageSeq=0;
-function nextSenderMessageId(){senderMessageSeq=(senderMessageSeq+1)%100000;return `smsg_${Date.now().toString(36)}_${senderMessageSeq.toString(36)}`}
 const video=$('#cameraVideo');
 function updateSimpleStatus(){
   const el=$('#senderSimpleStatus');
@@ -69,7 +67,7 @@ function initIdentity(){
 function generateNewStreamId(){const id=`cam_${platformSlug()}_${shortId(8)}`;$('#streamId').value=id;if($('#streamIdView'))$('#streamIdView').value=id;localStorage.setItem('remoteCamStreamId',id);$('#cameraName').value=`${PLATFORM} ${id.slice(-4).toUpperCase()}`;localStorage.setItem('remoteCamName',$('#cameraName').value.trim());log(`สร้าง Device ID ใหม่อัตโนมัติ: ${id}`)}
 function publisherLabel(){const name=($('#cameraName').value.trim()||$('#streamId').value).replace(/\|/g,' ');return `RCAM2|${DEVICE_ID}|${name}|${PLATFORM}|${BROWSER}`}
 
-// Smooth Zoom v0.11.2
+// Smooth Zoom v0.11.0
 // Adds 0.5× / 1× smooth return presets when the camera capability range supports them.
 // PWA browsers do not expose AVFoundation/Camera2 native ramping consistently.
 // Strategy:
@@ -287,37 +285,6 @@ function startFrameMeter(){
   video.requestVideoFrameCallback(onFrame);
 }
 
-function messageStreamId(){
-  return normId(`msg_${normId($('#streamId')?.value||'camera')}`);
-}
-function messageSend(data,target=null){
-  const sdk=messageReady&&messageVdo?messageVdo:vdo;
-  if(!sdk)throw new Error('ช่องข้อความยังไม่พร้อม');
-  if(target)return sdk.sendData(data,target);
-  return sdk.sendData(data,{preference:'any'});
-}
-async function startMessageChannel(){
-  const room=$('#room').value.trim(),mediaId=normId($('#streamId').value.trim());
-  if(!room||!mediaId)return;
-  if(messageVdo){try{await messageVdo.stopPublishing?.()}catch{};try{await messageVdo.disconnect?.()}catch{};messageVdo=null;messageReady=false}
-  const msgId=messageStreamId();
-  messageVdo=new VDONinjaSDK({autoRecover:true,autoRelay:true,salt:'remote-camera-message-v1'});
-  messageVdo.addEventListener('connected',()=>log('ช่องข้อความ: signaling connected'));
-  messageVdo.addEventListener('peerConnected',e=>{log('ช่องข้อความ: Control connected');setTimeout(sendTelemetry,120)});
-  messageVdo.addEventListener('peerDisconnected',()=>log('ช่องข้อความ: Control disconnected'));
-  messageVdo.addEventListener('connectionRecovered',()=>{messageReady=true;log('ช่องข้อความ: recovered');setTimeout(sendTelemetry,120)});
-  messageVdo.addEventListener('connectionFailed',()=>log('ช่องข้อความ: connection failed'));
-  messageVdo.addEventListener('dataReceived',e=>{
-    const d=e.detail?.data??e.detail??e.data;const uuid=e.detail?.uuid??e.uuid??'';
-    if(d&&typeof d==='object')handleRemote(d,uuid);
-  });
-  await messageVdo.connect();
-  await messageVdo.joinRoom({room});
-  await messageVdo.announce({streamID:msgId,label:`RCMSG|${DEVICE_ID}|${mediaId}|${PLATFORM}`});
-  messageReady=true;
-  log(`ช่องข้อความพร้อม: ${msgId}`);
-  setTimeout(sendTelemetry,100);
-}
 function telemetrySnapshot(){
   const t=cameraStream?.getVideoTracks?.()[0];
   const st=t?.getSettings?.()||{};
@@ -343,8 +310,8 @@ function telemetrySnapshot(){
 }
 
 function sendTelemetry(){
-  if(!isPublishing)return;
-  try{messageSend(telemetrySnapshot())}catch{}
+  if(!vdo||!isPublishing)return;
+  try{vdo.sendData(telemetrySnapshot())}catch{}
 }
 
 function startTelemetry(){
@@ -379,29 +346,20 @@ function setScreenRest(active){
 }
 
 function cleanMessageText(v){return String(v??'').replace(/\s+/g,' ').trim().slice(0,300)}
-function pruneProcessedMessages(){
-  const now=Date.now();for(const [k,t] of processedMessageIds){if(now-t>30000)processedMessageIds.delete(k)}
-}
 function renderSenderMessages(){
   const box=$('#senderMessageHistory');if(!box)return;
   box.innerHTML='';
   if(!senderMessages.length){const e=document.createElement('div');e.className='sender-message-empty';e.textContent='ยังไม่มีข้อความ';box.appendChild(e);return}
   senderMessages.slice(-60).forEach(m=>{
     const row=document.createElement('div');row.className=`sender-msg ${m.mine?'from-me':'from-control'}`;
-    const status=m.mine&&m.status?` • ${m.status}`:'';
-    const meta=document.createElement('div');meta.className='sender-msg-meta';meta.textContent=`${m.mine?'เรา':'Control'} • ${new Date(m.ts).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})}${status}`;
+    const meta=document.createElement('div');meta.className='sender-msg-meta';meta.textContent=`${m.mine?'เรา':'Control'} • ${new Date(m.ts).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})}`;
     const text=document.createElement('div');text.textContent=m.text;row.append(meta,text);box.appendChild(row);
   });
   box.scrollTop=box.scrollHeight;
 }
-function addSenderMessage(text,{mine=false,ts=Date.now(),messageId='',status=''}={}){
+function addSenderMessage(text,{mine=false,ts=Date.now()}={}){
   text=cleanMessageText(text);if(!text)return;
-  senderMessages.push({text,mine,ts,messageId,status});if(senderMessages.length>80)senderMessages.splice(0,senderMessages.length-80);renderSenderMessages();
-}
-function updateSenderMessageStatus(messageId,status){
-  if(!messageId)return;
-  const m=[...senderMessages].reverse().find(x=>x.messageId===messageId&&x.mine);
-  if(m){m.status=status;renderSenderMessages()}
+  senderMessages.push({text,mine,ts});if(senderMessages.length>80)senderMessages.splice(0,senderMessages.length-80);renderSenderMessages();
 }
 function showIncomingMessage(text){
   text=cleanMessageText(text);if(!text)return;
@@ -411,73 +369,18 @@ function showIncomingMessage(text){
   messageToastTimer=setTimeout(()=>{toast.hidden=true},9000);
   try{navigator.vibrate?.([120,70,120])}catch{}
 }
-function sendMessageAckToControl(d,sourceUuid=''){
-  if(!vdo||!d?.messageId)return;
-  const ack={
-    type:'remote-camera-message-ack',
-    messageId:d.messageId,
-    targetRole:'control',
-    streamID:normId($('#streamId').value),
-    deviceID:DEVICE_ID,
-    cameraName:$('#cameraName').value.trim()||$('#streamId').value,
-    ts:Date.now()
-  };
-  try{messageSend(ack,sourceUuid?{uuid:sourceUuid,allowFallback:true,preference:'any'}:null)}catch{}
-}
-function handleIncomingControlMessage(d,sourceUuid=''){
+function handleIncomingControlMessage(d){
   if(d?.targetRole&&d.targetRole!=='sender')return;
   const myStream=normId($('#streamId').value);
   if(d?.targetStream&&normId(d.targetStream)!==myStream)return;
   const text=cleanMessageText(d?.text);if(!text)return;
-  const messageId=String(d?.messageId||'');
-  pruneProcessedMessages();
-  if(messageId&&processedMessageIds.has(messageId)){sendMessageAckToControl(d,sourceUuid);return}
-  if(messageId)processedMessageIds.set(messageId,Date.now());
-  addSenderMessage(text,{mine:false,ts:Number(d.ts)||Date.now(),messageId});
-  showIncomingMessage(text);log(`ข้อความจาก Control: ${text}`);
-  sendMessageAckToControl(d,sourceUuid);
-}
-function handleSenderMessageAck(d){
-  if(d?.targetRole&&d.targetRole!=='sender')return;
-  const myStream=normId($('#streamId').value);
-  if(d?.targetStream&&normId(d.targetStream)!==myStream)return;
-  const messageId=String(d?.messageId||'');if(!messageId)return;
-  const pending=pendingSenderMessageAcks.get(messageId);if(!pending)return;
-  clearTimeout(pending.retryTimer);clearTimeout(pending.failTimer);pendingSenderMessageAcks.delete(messageId);
-  updateSenderMessageStatus(messageId,'ส่งถึงแล้ว');
+  addSenderMessage(text,{mine:false,ts:Number(d.ts)||Date.now()});showIncomingMessage(text);log(`ข้อความจาก Control: ${text}`);
 }
 function sendSenderMessage(text){
   text=cleanMessageText(text);if(!text)return false;
-  if(!isPublishing){log('ส่งข้อความไม่ได้: ยังไม่ได้เริ่มส่งภาพ');return false}
-  if(!messageReady||!messageVdo){log('ส่งข้อความไม่ได้: ช่องข้อความยังไม่พร้อม');return false}
-  const messageId=nextSenderMessageId();
-  const payload={
-    type:'remote-camera-message',
-    messageId,
-    targetRole:'control',
-    from:'sender',
-    text,
-    ts:Date.now(),
-    streamID:normId($('#streamId').value),
-    deviceID:DEVICE_ID,
-    cameraName:$('#cameraName').value.trim()||$('#streamId').value
-  };
-  try{
-    messageSend(payload);
-    addSenderMessage(text,{mine:true,ts:payload.ts,messageId,status:'กำลังส่ง…'});
-    const pending={payload,retryTimer:null,failTimer:null};
-    pendingSenderMessageAcks.set(messageId,pending);
-    pending.retryTimer=setTimeout(()=>{
-      if(!pendingSenderMessageAcks.has(messageId))return;
-      try{messageSend(payload);updateSenderMessageStatus(messageId,'กำลังส่งซ้ำ…')}catch{}
-    },700);
-    pending.failTimer=setTimeout(()=>{
-      if(!pendingSenderMessageAcks.has(messageId))return;
-      pendingSenderMessageAcks.delete(messageId);
-      updateSenderMessageStatus(messageId,'ยังไม่ยืนยัน');
-    },2600);
-    return true;
-  }catch(e){log(`ส่งข้อความไม่สำเร็จ: ${e.message}`);return false}
+  if(!vdo||!isPublishing){log('ส่งข้อความไม่ได้: ยังไม่ได้เริ่มส่งภาพ');return false}
+  const payload={type:'remote-camera-message',targetRole:'control',from:'sender',text,ts:Date.now(),streamID:normId($('#streamId').value),deviceID:DEVICE_ID,cameraName:$('#cameraName').value.trim()||$('#streamId').value};
+  try{vdo.sendData(payload,{allowFallback:true,preference:'any'});addSenderMessage(text,{mine:true,ts:payload.ts});return true}catch(e){log(`ส่งข้อความไม่สำเร็จ: ${e.message}`);return false}
 }
 
 function updateCameraStatus(track){
@@ -616,9 +519,7 @@ async function startPublishing(){
   vdo.addEventListener('connectionFailed',()=>log('WebRTC connection failed'));
   const onData=e=>{const d=e.detail?.data??e.detail??e.data;const uuid=e.detail?.uuid??e.uuid??'';if(d&&typeof d==='object')handleRemote(d,uuid)};vdo.addEventListener('dataReceived',onData);
   await vdo.connect();await vdo.joinRoom({room});await vdo.publish(stream,{room,streamID,label:publisherLabel()});
-  isPublishing=true;$('#liveBadge').textContent='LIVE';updateSimpleStatus();$('#liveBadge').classList.add('ok');$('#statRtc').textContent='PUBLISHING';
-  try{await startMessageChannel()}catch(e){messageReady=false;log(`ช่องข้อความเริ่มไม่สำเร็จ: ${e.message}`)}
-  startTelemetry();requestWakeLock();
+  isPublishing=true;$('#liveBadge').textContent='LIVE';updateSimpleStatus();$('#liveBadge').classList.add('ok');$('#statRtc').textContent='PUBLISHING';startTelemetry();requestWakeLock();
 }
 
 
@@ -635,8 +536,7 @@ function sendRemoteAck(d,sourceUuid,{ok=true,message=''}={}){
 }
 
 async function handleRemote(d,sourceUuid=''){
-  if(d?.type==='remote-camera-message'){handleIncomingControlMessage(d,sourceUuid);return}
-  if(d?.type==='remote-camera-message-ack'){handleSenderMessageAck(d);return}
+  if(d?.type==='remote-camera-message'){handleIncomingControlMessage(d);return}
   if(d?.type==='remote-camera-discover'){if(!d.targetStream||normId(d.targetStream)===normId($('#streamId').value))sendTelemetry();return}
   if(d?.type!=='remote-camera')return;
   if(d.targetStream && normId(d.targetStream)!==normId($('#streamId').value))return;
@@ -661,8 +561,6 @@ async function handleRemote(d,sourceUuid=''){
   }catch(e){log(`Remote error: ${e.message}`);sendRemoteAck(d,sourceUuid,{ok:false,message:e.message})}
 }
 async function stopAll(){
-  try{if(messageVdo){await messageVdo.stopPublishing?.();await messageVdo.disconnect?.()}}catch{}
-  messageVdo=null;messageReady=false;
   try{if(vdo){await vdo.stopPublishing?.();await vdo.disconnect?.()}}catch{}
   isPublishing=false;peerIds.clear();updatePeerCount();
   if(telemetryTimer){clearInterval(telemetryTimer);telemetryTimer=null}
@@ -736,9 +634,9 @@ $('#senderMessageInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.pr
 document.querySelectorAll('[data-quick-reply]').forEach(btn=>btn.addEventListener('click',()=>{if(sendSenderMessage(btn.dataset.quickReply||''))closeSheets()}));
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&isPublishing)requestWakeLock()});
 window.addEventListener('beforeunload',()=>stopAll());
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=0117').catch(()=>{});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=0110').catch(()=>{});
 $('#statHint').textContent=q().hint;
 $('#statSmartProfile').textContent=smartProfile;
 initIdentity();updateSimpleStatus();
 $('#newStreamId').onclick=generateNewStreamId;
-log(`v0.11.8 พร้อมใช้งาน — Dedicated Message Channel • ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
+log(`v0.11.0 พร้อมใช้งาน — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);

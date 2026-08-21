@@ -1,7 +1,7 @@
 <!doctype html>
-<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="styles.css?v=0118"><title>Control Center</title></head>
+<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="styles.css?v=0110"><title>Control Center</title></head>
 <body><main class="wrap compact-control">
-<div class="topbar"><div class="brand control-brand"><span class="ui-icon ui-icon-monitor" aria-hidden="true"></span><span>Control Center</span> <span class="version">v0.11.8</span></div><a class="badge" href="index.html">หน้าหลัก</a></div>
+<div class="topbar"><div class="brand">🖥️ Control Center <span class="version">v0.11.0</span></div><a class="badge" href="index.html">หน้าหลัก</a></div>
 
 <div class="card camera-bar-card">
   <div class="camera-select-row">
@@ -10,13 +10,13 @@
   </div>
   <div class="control-message-tools">
     <div id="cameraChips" class="camera-chips camera-chips-main"></div>
-    <button id="controlMessageOpen" class="ghost control-message-open" type="button"><span class="ui-icon ui-icon-message" aria-hidden="true"></span><span>ข้อความ</span></button>
+    <button id="controlMessageOpen" class="ghost control-message-open" type="button">💬 ข้อความ</button>
   </div>
   <div id="controlMessagePanel" class="control-message-panel" hidden>
     <div class="control-message-compose">
-      <input id="controlMessageInput" type="text" maxlength="300" placeholder="พิมพ์ข้อความถึงทุกกล้อง…">
-      <button id="controlMessageSendAll" class="primary" type="button">ส่งทุกกล้อง</button>
-      <button id="controlMessageSendSelected" class="ghost secondary-message-send" type="button">เฉพาะกล้องนี้</button>
+      <input id="controlMessageInput" type="text" maxlength="300" placeholder="พิมพ์ข้อความถึงกล้อง…">
+      <button id="controlMessageSendSelected" class="primary" type="button">ส่งกล้องนี้</button>
+      <button id="controlMessageSendAll" class="ghost" type="button">ส่งทุกกล้อง</button>
     </div>
     <div id="controlMessageHistory" class="control-message-history"></div>
   </div>
@@ -63,7 +63,7 @@
 <aside>
   <div class="card"><div class="section-title">OBS Browser Source</div><div class="copybox"><input id="obsUrl" readonly><button id="copy">คัดลอก</button></div></div>
   <div class="spacer"></div>
-  <div class="card"><div class="section-title">สถานะสด</div><div class="kv compact-kv"><div>โหมด</div><div id="statNetworkMode">-</div><div id="smartTargetLabel">Bitrate</div><div id="smartTarget">-</div><div id="smartStateLabel" class="hidden">เน็ต</div><div id="smartState" class="hidden">-</div><div id="smartActualLabel" class="hidden">รับจริง</div><div id="smartActual" class="hidden">-</div><div id="smartLossLabel" class="hidden">Loss</div><div id="smartLoss" class="hidden">-</div><div id="smartRttLabel" class="hidden">RTT</div><div id="smartRtt" class="hidden">-</div><div id="smartJitterLabel" class="hidden">Jitter</div><div id="smartJitter" class="hidden">-</div></div></div>
+  <div class="card"><div class="section-title">สถานะสด</div><div class="kv compact-kv"><div>โหมด</div><div id="statNetworkMode">-</div><div>เน็ต</div><div id="smartState">-</div><div>Target</div><div id="smartTarget">-</div><div>รับจริง</div><div id="smartActual">-</div><div>Loss</div><div id="smartLoss">-</div><div>RTT</div><div id="smartRtt">-</div><div>Jitter</div><div id="smartJitter">-</div></div></div>
 
   <details class="card advanced-card compact-details">
     <summary>ข้อมูลเพิ่มเติม</summary>
@@ -75,4 +75,4 @@
 </aside>
 </div></main>
 <div id="controlMessageToast" class="control-message-toast" hidden><strong id="controlMessageToastFrom">ข้อความจากกล้อง</strong><div id="controlMessageToastText"></div></div>
-<script src="sdk-loader.js?v=0118"></script><script src="control.js?v=0118"></script></body></html>
+<script src="sdk-loader.js?v=0110"></script><script src="control.js?v=0110"></script></body></html>
