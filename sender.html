@@ -1,1 +1,116 @@
-<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#08131e"><link rel="manifest" href="manifest.webmanifest"><link rel="stylesheet" href="styles.css?v=070"><title>Sender • Remote Camera</title></head><body><main class="wrap"><div class="topbar"><div class="brand">📱 Remote Camera <span class="version">v0.7</span></div><a class="badge" href="index.html">หน้าหลัก</a></div><div class="grid"><section><div class="card"><div class="preview"><video id="cameraVideo" autoplay playsinline muted></video><div class="overlay"><div id="liveBadge" class="status">OFFLINE</div><div id="camBadge" class="status">—</div></div></div><div class="toolbar"><button id="frontBtn" class="ghost">กล้องหน้า</button><button id="rearBtn" class="ghost">กล้องหลัง</button><button id="zoomOutBtn" class="ghost">− Zoom</button><button id="zoomInBtn" class="ghost">+ Zoom</button></div><div class="spacer"></div><div class="row"><div><label>Zoom แบบสมูท</label><input id="zoomRange" type="range" min="1" max="1" step="0.1" value="1" disabled><div class="mini" id="zoomInfo">อุปกรณ์นี้ยังไม่รายงานการควบคุม Zoom ผ่านเว็บ</div></div><div><label>ความเร็วซูม</label><select id="zoomSpeed"><option value="slow">ช้า — นุ่มนวล</option><option value="normal" selected>ปกติ — แนะนำ</option><option value="fast">เร็ว</option></select><div class="mini">กดปุ่ม − / + ค้างไว้เพื่อซูมต่อเนื่อง</div></div></div></div><div class="spacer"></div><div class="card"><div class="section-title">การเชื่อมต่อ</div><div class="row"><div><label>Room</label><input id="room" value="remote-cam-test"></div><div><label>Stream ID</label><input id="streamId" value="cam01"></div></div><div class="spacer"></div><div class="row"><div><label>คุณภาพกล้อง</label><select id="quality"><option value="1080_30" selected>1080p / 30 — แนะนำ</option><option value="1080_60">1080p / สูงสุด 60 — ถ้ารองรับ</option><option value="720_60">720p / สูงสุด 60 — ลื่น/ประหยัดเน็ต</option><option value="720_30">720p / 30</option><option value="1080_24_detail">1080p / 24 — เน้นภาพนิ่งคม</option></select></div><div><label>กล้องที่ระบบมองเห็น</label><select id="deviceSelect"><option value="">อัตโนมัติ</option></select></div></div><div class="spacer"></div><div class="row"><button id="startCamera" class="good">1. เปิดกล้อง</button><button id="startSend" class="primary">2. เริ่มส่งภาพ</button></div><div class="spacer"></div><button id="stopBtn" class="danger">หยุดทั้งหมด</button></div></section><aside><div class="card"><div class="section-title">สถานะ</div><div class="kv"><div>Requested</div><div id="statRequested">-</div><div>Camera settings</div><div id="statCamera">-</div><div>Measured FPS</div><div id="statMeasuredFps">-</div><div>FPS capability</div><div id="statFpsCap">-</div><div>ส่ง Track</div><div id="statOutput">Direct camera track</div><div>Encoder hint</div><div id="statHint">motion</div><div>Orientation</div><div id="statSharp">-</div><div>Devices</div><div id="statDevices">-</div><div>Mic</div><div id="statMic">-</div><div>WebRTC</div><div id="statRtc">-</div><div>Viewers</div><div id="statPeers">0</div><div>Remote control</div><div id="statRemote">พร้อมรับคำสั่งเมื่อเชื่อมต่อ</div><div>Smart profile</div><div id="statSmartProfile">ปกติ</div></div><div class="spacer"></div><div class="notice"><b>v0.7:</b> เพิ่ม Smooth Zoom แบบ ramp — ลากสไลเดอร์หรือกด − / + ค้างเพื่อซูมต่อเนื่อง มี Soft start/stop และเลือกความเร็วได้ โดยยังคง Smart Network และ replaceTrack เดิม</div></div><div class="spacer"></div><div class="card"><div class="section-title">Log</div><div id="log" class="log"></div></div></aside></div></main><script src="sdk-loader.js?v=070"></script><script src="sender.js?v=070"></script></body></html>
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#08131e">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="styles.css?v=080">
+  <title>Sender • Remote Camera</title>
+</head>
+<body>
+<main class="wrap">
+  <div class="topbar">
+    <div class="brand">📱 Remote Camera <span class="version">v0.8</span></div>
+    <div style="display:flex;gap:8px;align-items:center"><span id="platformBadge" class="badge">ตรวจอุปกรณ์…</span><a class="badge" href="index.html">หน้าหลัก</a></div>
+  </div>
+
+  <div class="grid">
+    <section>
+      <div class="card">
+        <div class="preview">
+          <video id="cameraVideo" autoplay playsinline muted></video>
+          <div class="overlay"><div id="liveBadge" class="status">OFFLINE</div><div id="camBadge" class="status">—</div></div>
+        </div>
+        <div class="toolbar">
+          <button id="frontBtn" class="ghost">กล้องหน้า</button>
+          <button id="rearBtn" class="ghost">กล้องหลัง</button>
+          <button id="zoomOutBtn" class="ghost">− Zoom</button>
+          <button id="zoomInBtn" class="ghost">+ Zoom</button>
+        </div>
+        <div class="spacer"></div>
+        <div class="row">
+          <div>
+            <label>Zoom แบบสมูท</label>
+            <input id="zoomRange" type="range" min="1" max="1" step="0.1" value="1" disabled>
+            <div class="mini" id="zoomInfo">อุปกรณ์นี้ยังไม่รายงานการควบคุม Zoom ผ่านเว็บ</div>
+          </div>
+          <div>
+            <label>ความเร็วซูม</label>
+            <select id="zoomSpeed"><option value="slow">ช้า — นุ่มนวล</option><option value="normal" selected>ปกติ — แนะนำ</option><option value="fast">เร็ว</option></select>
+            <div class="mini">กดปุ่ม − / + ค้างไว้เพื่อซูมต่อเนื่อง</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="spacer"></div>
+      <div class="card">
+        <div class="section-title">ตัวตนกล้องเครื่องนี้</div>
+        <div class="row3">
+          <div><label>ชื่อกล้อง</label><input id="cameraName" placeholder="เช่น กล้องหน้าเวที"></div>
+          <div><label>Room</label><input id="room" value="remote-cam-test"></div>
+          <div><label>Stream ID <span class="mini">(ห้ามซ้ำกับเครื่องอื่น)</span></label><div class="copybox"><input id="streamId"><button id="newStreamId" type="button">ID ใหม่</button></div></div>
+        </div>
+        <div class="spacer"></div>
+        <div class="notice"><b>หลายมือถือ:</b> ใช้ Room เดียวกันได้ทั้ง iOS และ Android แต่แต่ละเครื่องต้องมี Stream ID คนละค่า ระบบจะจำชื่อ/Room/Stream ID ของเครื่องนี้ไว้ในเบราว์เซอร์</div>
+      </div>
+
+      <div class="spacer"></div>
+      <div class="card">
+        <div class="section-title">กล้องและคุณภาพ</div>
+        <div class="row">
+          <div>
+            <label>คุณภาพกล้อง</label>
+            <select id="quality"><option value="1080_30" selected>1080p / 30 — คมชัด</option><option value="1080_60">1080p / สูงสุด 60 — ถ้ารองรับ</option><option value="720_60">720p / สูงสุด 60 — ลื่น</option><option value="720_30">720p / 30</option><option value="1080_24_detail">1080p / 24 — เน้นภาพนิ่งคม</option></select>
+          </div>
+          <div>
+            <label>วิธีเลือกกล้อง</label>
+            <div class="mini android-help" id="cameraHelp">ใช้ปุ่ม “กล้องหน้า / กล้องหลัง” ด้านบนเป็นหลัก ตัวเลือกกล้องรายตัวอยู่ในขั้นสูง</div>
+          </div>
+        </div>
+        <div class="spacer"></div>
+        <div class="row"><button id="startCamera" class="good">1. เปิดกล้อง</button><button id="startSend" class="primary">2. เริ่มส่งภาพ</button></div>
+        <div class="spacer"></div><button id="stopBtn" class="danger">หยุดทั้งหมด</button>
+
+        <details class="advanced" id="advancedCamera">
+          <summary>ตัวเลือกกล้องขั้นสูง</summary>
+          <div class="spacer"></div>
+          <div class="row">
+            <div><label>กล้องที่เบราว์เซอร์มองเห็น</label><select id="deviceSelect"><option value="">อัตโนมัติ / ใช้หน้า-หลัง</option></select></div>
+            <div><label>&nbsp;</label><button id="applyDeviceBtn" class="ghost" type="button">ใช้กล้องที่เลือก</button></div>
+          </div>
+          <div class="spacer"></div>
+          <div class="notice"><b>Android:</b> รายการของเบราว์เซอร์กับรายการในเว็บเป็นคนละชั้นกัน v0.8 จึงไม่สลับกล้องทันทีเมื่อแตะรายการนี้ ต้องกด “ใช้กล้องที่เลือก” เอง เพื่อลดหน้าต่างเลือกกล้องเด้งซ้ำ</div>
+        </details>
+      </div>
+    </section>
+
+    <aside>
+      <div class="card">
+        <div class="section-title">สถานะ</div>
+        <div class="kv">
+          <div>อุปกรณ์</div><div id="statPlatform">-</div>
+          <div>Requested</div><div id="statRequested">-</div>
+          <div>Camera settings</div><div id="statCamera">-</div>
+          <div>Measured FPS</div><div id="statMeasuredFps">-</div>
+          <div>FPS capability</div><div id="statFpsCap">-</div>
+          <div>ส่ง Track</div><div id="statOutput">Direct camera track</div>
+          <div>Encoder hint</div><div id="statHint">motion</div>
+          <div>Orientation</div><div id="statSharp">-</div>
+          <div>Devices</div><div id="statDevices">-</div>
+          <div>Mic</div><div id="statMic">-</div>
+          <div>WebRTC</div><div id="statRtc">-</div>
+          <div>Viewers</div><div id="statPeers">0</div>
+          <div>Remote control</div><div id="statRemote">พร้อมรับคำสั่งเมื่อเชื่อมต่อ</div>
+          <div>Smart profile</div><div id="statSmartProfile">ปกติ</div>
+        </div>
+        <div class="spacer"></div>
+        <div class="notice"><b>v0.8 Android camera fix:</b> ขอสิทธิ์กล้องเพียง 1 ครั้งต่อการสั่งเปิด/สลับหนึ่งครั้ง ไม่ลอง Exact แล้วขอซ้ำอัตโนมัติ และไม่สลับกล้องจาก dropdown จนกว่าจะกดปุ่มยืนยัน</div>
+      </div>
+      <div class="spacer"></div>
+      <div class="card"><div class="section-title">Log</div><div id="log" class="log"></div></div>
+    </aside>
+  </div>
+</main>
+<script src="sdk-loader.js?v=080"></script><script src="sender.js?v=080"></script>
+</body></html>

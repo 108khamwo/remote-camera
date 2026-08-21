@@ -2,10 +2,37 @@ const $=s=>document.querySelector(s); const logEl=$('#log');
 function log(m){const t=new Date().toLocaleTimeString();logEl.textContent+=`[${t}] ${m}\n`;logEl.scrollTop=logEl.scrollHeight}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 let cameraStream=null,audioStream=null,outStream=null,vdo=null,currentFacing='environment',isPublishing=false,lastRemoteTs=0;
+let explicitDeviceId='', openingCamera=false;
 let peerIds=new Set();
 let measuredCameraFps=0, frameMeterGeneration=0, telemetryTimer=null;
 let smartProfile='ปกติ';
 const video=$('#cameraVideo');
+const UA=navigator.userAgent||'';
+const IS_ANDROID=/Android/i.test(UA);
+const IS_IOS=/iPhone|iPad|iPod/i.test(UA) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+const IS_SAMSUNG=/SamsungBrowser/i.test(UA);
+const PLATFORM=IS_ANDROID?'Android':IS_IOS?'iOS':'Browser';
+const BROWSER=IS_SAMSUNG?'Samsung Internet':/CriOS|Chrome/i.test(UA)?'Chrome':/Safari/i.test(UA)?'Safari':'Web Browser';
+function shortId(){try{return crypto.randomUUID().replace(/-/g,'').slice(0,4)}catch{return Math.random().toString(36).slice(2,6)}}
+function normId(v){return String(v||'').trim().replace(/[^\w]/g,'_')}
+function initIdentity(){
+  const savedRoom=localStorage.getItem('remoteCamRoom');
+  const savedStream=localStorage.getItem('remoteCamStreamId');
+  const savedName=localStorage.getItem('remoteCamName');
+  const id=normId(savedStream||`cam_${shortId()}`);
+  $('#room').value=savedRoom||'remote-cam-test';
+  $('#streamId').value=id;
+  $('#cameraName').value=savedName||`${PLATFORM} ${id.slice(-4).toUpperCase()}`;
+  $('#platformBadge').textContent=`${PLATFORM} • ${BROWSER}`;
+  $('#statPlatform').textContent=`${PLATFORM} / ${BROWSER}`;
+  $('#cameraHelp').textContent=IS_ANDROID?'Android: ใช้ “กล้องหน้า / กล้องหลัง” เป็นหลัก ครั้งแรกถ้าเบราว์เซอร์ถามให้เลือก “อัตโนมัติ” และจดจำตัวเลือกถ้ามี':'ใช้ “กล้องหน้า / กล้องหลัง” เป็นหลัก รายชื่อเลนส์รายตัวอยู่ในตัวเลือกขั้นสูง';
+  ['room','streamId','cameraName'].forEach(id=>$('#'+id).addEventListener('input',()=>{
+    localStorage.setItem('remoteCamRoom',$('#room').value.trim());
+    localStorage.setItem('remoteCamStreamId',$('#streamId').value.trim());
+    localStorage.setItem('remoteCamName',$('#cameraName').value.trim());
+  }));
+}
+function generateNewStreamId(){const id=`cam_${shortId()}`;$('#streamId').value=id;localStorage.setItem('remoteCamStreamId',id);if(!$('#cameraName').value.trim()||/^((iOS|Android|Browser) )[A-Z0-9]{4}$/.test($('#cameraName').value.trim())){$('#cameraName').value=`${PLATFORM} ${id.slice(-4).toUpperCase()}`;localStorage.setItem('remoteCamName',$('#cameraName').value.trim())}log(`สร้าง Stream ID ใหม่: ${id}`)}
 
 // Smooth Zoom: Safari/PWA does not expose AVFoundation's native zoom ramp,
 // so we emulate a camera-like ramp by applying many small hardware-zoom steps.
@@ -101,10 +128,17 @@ function strictVideoConstraints(extra={}){const {w,h,fps}=q();return {width:{exa
 async function listDevices(){
   const ds=await navigator.mediaDevices.enumerateDevices();
   const cams=ds.filter(d=>d.kind==='videoinput');
-  const sel=$('#deviceSelect'),old=sel.value;
-  sel.innerHTML='<option value="">อัตโนมัติ</option>';
-  cams.forEach((d,i)=>{const o=document.createElement('option');o.value=d.deviceId;o.textContent=d.label||`Camera ${i+1}`;sel.appendChild(o)});
-  if([...sel.options].some(o=>o.value===old))sel.value=old;
+  const sel=$('#deviceSelect');
+  const activeId=cameraStream?.getVideoTracks?.()[0]?.getSettings?.().deviceId||'';
+  sel.innerHTML='<option value="">อัตโนมัติ / ใช้หน้า-หลัง</option>';
+  cams.forEach((d,i)=>{
+    const o=document.createElement('option');o.value=d.deviceId;
+    let label=(d.label||`Camera ${i+1}`).replace(/^camera\s*/i,'กล้อง ');
+    o.textContent=`${i+1}. ${label}${d.deviceId===activeId?' • กำลังใช้':''}`;
+    sel.appendChild(o)
+  });
+  if(explicitDeviceId && [...sel.options].some(o=>o.value===explicitDeviceId))sel.value=explicitDeviceId;
+  else sel.value='';
   $('#statDevices').textContent=`${cams.length} กล้อง`;
 }
 
@@ -114,20 +148,16 @@ async function ensureMic(){
   $('#statMic').textContent='ON';log('เปิดไมโครโฟนแล้ว');
 }
 
-async function getCamera(vcStrict,vcFallback){
-  try{
-    const s=await navigator.mediaDevices.getUserMedia({video:vcStrict,audio:false});
-    log('ได้ความละเอียด/FPS กล้องตาม preset แบบตรงค่า');
-    return s;
-  }catch(e){
-    log(`Exact capture ไม่สำเร็จ (${e.name}) — ใช้ค่าที่ใกล้ที่สุด`);
-    return navigator.mediaDevices.getUserMedia({video:vcFallback,audio:false});
-  }
+async function getCamera(constraints){
+  // v0.8: หนึ่งการสั่งเปิด = getUserMedia หนึ่งครั้ง เพื่อลด Android/Samsung camera chooser เด้งซ้ำ
+  return navigator.mediaDevices.getUserMedia({video:constraints,audio:false});
 }
 
 async function acquireCamera({facing=currentFacing,deviceId=''}={}){
   const target=deviceId?{deviceId:{exact:deviceId}}:{facingMode:{ideal:facing}};
-  return getCamera(strictVideoConstraints(target),idealVideoConstraints(target));
+  const constraints=idealVideoConstraints(target);
+  log(`ขอกล้อง 1 ครั้ง: ${deviceId?'device ที่เลือก':facing==='user'?'กล้องหน้า':'กล้องหลัง'} / ${q().label}`);
+  return getCamera(constraints);
 }
 
 function fpsCapabilityText(track){
@@ -174,6 +204,10 @@ function telemetrySnapshot(){
     actual:{width:st.width||0,height:st.height||0,fps:Number(st.frameRate||0),facingMode:st.facingMode||currentFacing},
     measuredFps:Number(measuredCameraFps||0),
     cameraLabel:t?.label||'',
+    cameraName:$('#cameraName').value.trim()||$('#streamId').value.trim(),
+    platform:PLATFORM,
+    browser:BROWSER,
+    streamID:normId($('#streamId').value.trim()),
     fpsCapability:fpsCapabilityText(t),
     publishing:!!isPublishing,
     presetKey:$('#quality').value,
@@ -203,9 +237,9 @@ function updateCameraStatus(track){
   $('#statHint').textContent=hint;
   $('#camBadge').textContent=track.label||currentFacing;
   const landscape=sw>=sh;
-  $('#statSharp').textContent=landscape?'แนวนอน ✓':'แนวตั้ง — หมุน iPhone';
+  $('#statSharp').textContent=landscape?'แนวนอน ✓':'แนวตั้ง — หมุนมือถือ';
   $('#statSharp').className=landscape?'goodtext':'warntext';
-  if(!landscape)log(`⚠ กล้องรายงาน ${sw}×${sh} แนวตั้ง — งาน OBS 16:9 แนะนำหมุน iPhone แนวนอน`);
+  if(!landscape)log(`⚠ กล้องรายงาน ${sw}×${sh} แนวตั้ง — งาน OBS 16:9 แนะนำหมุนมือถือแนวนอน`);
   if(sf && sf < fps-5) log(`⚠ Requested สูงสุด ${fps}fps แต่ Camera settings ให้ประมาณ ${sf.toFixed(1)}fps`);
 }
 
@@ -223,51 +257,54 @@ async function configureZoom(track){
 }
 
 async function openCamera({facing=currentFacing,deviceId=''}={}){
+  if(openingCamera)return;
   if(!navigator.mediaDevices?.getUserMedia)throw new Error('เบราว์เซอร์ไม่รองรับ getUserMedia');
+  openingCamera=true;
   const oldStream=cameraStream;
   const oldTrack=oldStream?.getVideoTracks?.()[0]||null;
   let nextStream=null;
   currentFacing=facing;
+  if(deviceId)explicitDeviceId=deviceId;
+  else explicitDeviceId='';
   try{
-    // ลองเปิดกล้องใหม่โดยยังไม่ตัด track เดิม เพื่อให้ replaceTrack เนียนที่สุด
-    nextStream=await acquireCamera({facing,deviceId});
-  }catch(firstErr){
-    // iOS บางรุ่นไม่ยอมเปิดกล้องตัวที่สองพร้อมกัน จึงปล่อยกล้องเดิมก่อนแล้วลองอีกครั้ง
-    if(!oldTrack)throw firstErr;
-    log(`Safari ไม่ยอมเปิดกล้องใหม่พร้อม track เดิม (${firstErr.name}) — สลับแบบปล่อยกล้องเดิมชั่วคราว`);
-    oldTrack.stop();
-    await sleep(120);
-    nextStream=await acquireCamera({facing,deviceId});
-  }
-  const nextTrack=nextStream.getVideoTracks()[0];
-  try{nextTrack.contentHint=q().hint}catch{}
-
-  // เปลี่ยน track ภายใน peer connection เดิม แทนการ publish ใหม่
-  if(isPublishing&&vdo&&oldTrack){
-    try{
-      await vdo.replaceTrack(oldTrack,nextTrack);
-      if(outStream){
-        try{outStream.removeTrack(oldTrack)}catch{}
-        if(!outStream.getVideoTracks().includes(nextTrack))outStream.addTrack(nextTrack);
+    if(IS_ANDROID && oldTrack){
+      // Android หลาย browser เปิดกล้องตัวใหม่พร้อมตัวเดิมไม่ได้ และอาจทำ chooser เด้งรอบสอง
+      // ปล่อย track เดิมก่อน แล้วขอ track ใหม่เพียงครั้งเดียว
+      oldTrack.stop();
+      await sleep(90);
+      nextStream=await acquireCamera({facing,deviceId});
+    }else{
+      try{
+        nextStream=await acquireCamera({facing,deviceId});
+      }catch(firstErr){
+        if(!oldTrack)throw firstErr;
+        // iOS บางรุ่นต้องปล่อยกล้องเดิมก่อน แต่ retry นี้เกิดเฉพาะเมื่อ hardware เปิดพร้อมกันไม่ได้
+        log(`เปิดกล้องใหม่พร้อม track เดิมไม่ได้ (${firstErr.name}) — ปล่อยกล้องเดิมแล้วลองอีกครั้ง`);
+        oldTrack.stop();await sleep(120);
+        nextStream=await acquireCamera({facing,deviceId});
       }
-      log('✓ replaceTrack สำเร็จ — WebRTC connection เดิมยังอยู่');
-    }catch(e){
-      nextStream.getTracks().forEach(t=>t.stop());
-      throw new Error(`สลับ WebRTC track ไม่สำเร็จ: ${e.message}`);
     }
-  }
+    const nextTrack=nextStream.getVideoTracks()[0];
+    try{nextTrack.contentHint=q().hint}catch{}
 
-  cameraStream=nextStream;
-  video.srcObject=nextStream;
-  await video.play();
-  startFrameMeter();
-  updateCameraStatus(nextTrack);
-  await configureZoom(nextTrack);
-  await listDevices();
+    if(isPublishing&&vdo&&oldTrack){
+      try{
+        await vdo.replaceTrack(oldTrack,nextTrack);
+        if(outStream){try{outStream.removeTrack(oldTrack)}catch{};if(!outStream.getVideoTracks().includes(nextTrack))outStream.addTrack(nextTrack)}
+        log('✓ replaceTrack สำเร็จ — WebRTC connection เดิมยังอยู่');
+      }catch(e){
+        nextStream.getTracks().forEach(t=>t.stop());
+        throw new Error(`สลับ WebRTC track ไม่สำเร็จ: ${e.message}`);
+      }
+    }
 
-  if(oldStream&&oldStream!==nextStream){oldStream.getTracks().forEach(t=>{if(t!==oldTrack||t.readyState!=='ended')try{t.stop()}catch{}})}
-  log(`เปิดกล้อง: ${nextTrack.label||facing} / hint=${q().hint}`);
-  return nextTrack;
+    cameraStream=nextStream;
+    video.srcObject=nextStream;await video.play();
+    startFrameMeter();updateCameraStatus(nextTrack);await configureZoom(nextTrack);await listDevices();
+    if(oldStream&&oldStream!==nextStream){oldStream.getTracks().forEach(t=>{if(t!==oldTrack||t.readyState!=='ended')try{t.stop()}catch{}})}
+    log(`เปิดกล้อง: ${nextTrack.label||facing} / ${PLATFORM} / hint=${q().hint}`);
+    return nextTrack;
+  }finally{openingCamera=false}
 }
 
 async function setZoom(value){
@@ -282,7 +319,7 @@ async function setQualityPreset(value,reason='Remote'){
   smartProfile=reason;
   $('#statSmartProfile').textContent=smartProfile;
   log(`${reason} → ${q().label}`);
-  if(cameraStream)await openCamera({facing:currentFacing,deviceId:$('#deviceSelect').value});
+  if(cameraStream)await openCamera({facing:currentFacing,deviceId:explicitDeviceId});
   sendTelemetry();
 }
 
@@ -305,7 +342,8 @@ async function startPublishing(){
   await loadVDONinjaSDK(({index,total})=>{ $('#statRtc').textContent=`โหลด SDK ${index}/${total}`; log(`กำลังโหลด WebRTC SDK (${index}/${total})`); });
   log(`VDO.Ninja SDK พร้อมใช้งาน v${window.VDONinjaSDK?.VERSION || '?'}`);
   if(!cameraStream)await openCamera({facing:currentFacing});
-  const stream=await buildOutStream(),room=$('#room').value.trim(),streamID=$('#streamId').value.trim();
+  const stream=await buildOutStream(),room=$('#room').value.trim(),streamID=normId($('#streamId').value.trim());
+  $('#streamId').value=streamID;localStorage.setItem('remoteCamStreamId',streamID);
   if(!room||!streamID)throw new Error('กรุณาระบุ Room และ Stream ID');
   vdo=new VDONinjaSDK({autoRecover:true,autoRelay:true,salt:'vdo.ninja'});
   vdo.addEventListener('connected',()=>{$('#statRtc').textContent='signaling connected';log('เชื่อม signaling แล้ว')});
@@ -320,7 +358,8 @@ async function startPublishing(){
 }
 
 async function handleRemote(d){
-  if(d.type!=='remote-camera')return;if(d.ts&&d.ts===lastRemoteTs)return;if(d.ts)lastRemoteTs=d.ts;
+  if(d.type!=='remote-camera')return;
+  if(d.targetStream && normId(d.targetStream)!==normId($('#streamId').value))return;if(d.ts&&d.ts===lastRemoteTs)return;if(d.ts)lastRemoteTs=d.ts;
   $('#statRemote').textContent=`คำสั่ง: ${d.command}`;log(`Remote: ${d.command}`);
   try{
     if(d.command==='front')await openCamera({facing:'user'});
@@ -352,7 +391,8 @@ $('#startSend').onclick=()=>startPublishing().catch(e=>log(`Publish error: ${e.m
 $('#stopBtn').onclick=()=>stopAll();
 $('#frontBtn').onclick=()=>openCamera({facing:'user'}).catch(e=>log(`Switch error: ${e.message}`));
 $('#rearBtn').onclick=()=>openCamera({facing:'environment'}).catch(e=>log(`Switch error: ${e.message}`));
-$('#deviceSelect').onchange=e=>{if(e.target.value)openCamera({deviceId:e.target.value}).catch(x=>log(`Device error: ${x.message}`))};
+$('#deviceSelect').onchange=()=>{log('เลือกกล้องขั้นสูงแล้ว — ยังไม่สลับจนกว่าจะกด “ใช้กล้องที่เลือก”')};
+$('#applyDeviceBtn').onclick=()=>{const id=$('#deviceSelect').value;if(!id){explicitDeviceId='';log('กลับเป็นโหมดอัตโนมัติ/หน้า-หลัง');return}openCamera({deviceId:id,facing:currentFacing}).catch(x=>log(`Device error: ${x.message}`))};
 $('#zoomRange').oninput=e=>setSmoothZoomTarget(e.target.value);
 $('#zoomSpeed').onchange=()=>{updateZoomUi();sendTelemetry()};
 function bindHoldZoom(btn,dir){
@@ -365,10 +405,13 @@ bindHoldZoom($('#zoomOutBtn'),-1);bindHoldZoom($('#zoomInBtn'),1);
 $('#quality').onchange=async()=>{
   smartProfile='Manual';$('#statSmartProfile').textContent=smartProfile;
   log(`เปลี่ยนคุณภาพเป็น ${q().label} / hint=${q().hint}`);
-  if(cameraStream){try{await openCamera({facing:currentFacing,deviceId:$('#deviceSelect').value})}catch(e){log(`Quality switch error: ${e.message}`)}}
+  if(cameraStream){try{await openCamera({facing:currentFacing,deviceId:explicitDeviceId})}catch(e){log(`Quality switch error: ${e.message}`)}}
 };
 window.addEventListener('beforeunload',()=>stopAll());
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=070').catch(()=>{});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=080').catch(()=>{});
 $('#statHint').textContent=q().hint;
 $('#statSmartProfile').textContent=smartProfile;
-log('v0.7 พร้อมใช้งาน — Smooth Zoom แบบ ramp, กดค้าง และปรับความเร็วได้');
+initIdentity();
+$('#newStreamId').onclick=generateNewStreamId;
+$('#streamId').addEventListener('change',()=>{$('#streamId').value=normId($('#streamId').value);localStorage.setItem('remoteCamStreamId',$('#streamId').value)});
+log(`v0.8 พร้อมใช้งาน — ${PLATFORM}/${BROWSER}, multi-camera identity และ Android camera flow ใหม่`);

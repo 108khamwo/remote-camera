@@ -1,57 +1,33 @@
-# Remote Camera PWA v0.7 — Smart Network
+# Remote Camera PWA v0.8
 
-ต้นแบบส่งภาพ iPhone → WebRTC → OBS พร้อม Control Center และโหมดอัจฉริยะสำหรับ 4G/5G อ่อน
+รุ่นนี้เน้น 3 เรื่องจากการทดสอบจริง:
 
-## สิ่งใหม่ใน v0.7
+1. **Network Mode ค่าเริ่มต้น = Manual**
+2. **รองรับหลายมือถือ (iOS + Android)** ด้วย Room เดียวและ Stream ID แยกแต่ละเครื่อง
+3. **แก้ UX เลือกกล้อง Android** เพื่อลด browser camera chooser เด้งซ้ำ
 
-- เพิ่ม **Smart Network** ที่ `receiver.html` โดยตรง จึงทำงานกับ OBS Browser Source ได้แม้ไม่ได้เปิด Control Center ค้างไว้
-- เริ่มจาก bitrate สูงสุดที่กำหนด เช่น 8 Mbps แล้วตรวจ WebRTC stats ประมาณทุก 1.25 วินาที
-- ใช้ packet loss, RTT, jitter และ available bitrate (เมื่อ browser รายงาน) เป็นตัวตัดสิน
-- ลด bitrate แบบเป็นขั้นเมื่อเน็ตอ่อน และเพิ่มคืนแบบช้ากว่าเมื่อสัญญาณนิ่ง เพื่อลดอาการแกว่งขึ้นลง
-- ตั้ง bitrate ต่ำสุดได้ เช่น 1.8 Mbps
-- หากลดถึงขั้นต่ำแล้วยังวิกฤตต่อเนื่อง Control Center สามารถสั่ง iPhone ลด Capture เป็น **720p30 ชั่วคราว** ผ่าน data channel
-- เมื่อสัญญาณกลับมานิ่ง ระบบคืน preset เดิมอัตโนมัติ
-- การเปลี่ยน Capture ยังใช้ `replaceTrack()` เพื่อพยายามคง peer connection เดิม
-- แสดงสถานะสด: Network state, Target bitrate, bitrate รับจริง, packet loss, RTT และ jitter
+## Android camera flow ใหม่
+- การเปิด/สลับกล้องหนึ่งครั้งเรียก `getUserMedia()` เพียงครั้งเดียวใน flow ปกติ
+- ไม่ลอง Exact constraint แล้ว fallback ด้วย `getUserMedia()` รอบสองอีก
+- ปุ่ม **กล้องหน้า / กล้องหลัง** เป็นวิธีหลัก
+- รายการ device รายตัวอยู่ใน **ตัวเลือกกล้องขั้นสูง**
+- เปลี่ยนค่าใน dropdown อย่างเดียวจะไม่เปิดกล้องทันที ต้องกด **ใช้กล้องที่เลือก**
+- บน Android ถ้ามี browser chooser ครั้งแรก แนะนำเลือก **อัตโนมัติ** และ **จดจำตัวเลือก** (ถ้า browser มีตัวเลือกนี้) เพื่อให้ facingMode ของหน้าเว็บจัดการหน้า/หลังได้ง่ายขึ้น
 
-## โหมดแนะนำ
+## หลายมือถือ
+มือถือทุกเครื่อง:
+- Room: ใช้ค่าเดียวกัน เช่น `remote-cam-test`
+- Stream ID: ต้องไม่ซ้ำ เช่น `cam_a3f7`, `cam_b921`, `cam_c880`
 
-### เน็ตปกติ
-- Camera: 1080p30
-- Smart Network: ON
-- Maximum bitrate: 8 Mbps
-- Minimum bitrate: 1.8 Mbps
-- Buffer: 200 ms
-- Codec: H.264
+Control Center สามารถบันทึกรายชื่อหลายกล้อง เลือกควบคุมทีละเครื่อง และสร้าง OBS Browser Source URL แยกทุกกล้องได้
 
-### เน็ตอ่อนมาก
-Smart Network จะลดประมาณ 8 → 6.5 → 5 → 4 → 3.2 → 2.5 → 2 → 1.8 Mbps ตามสถานการณ์
+## ค่าแนะนำ
+- 1080p30
+- H.264
+- 8 Mbps
+- Buffer 200 ms
+- Network Mode: Manual (ค่าเริ่มต้น)
+- เปิด Smart Network เฉพาะเมื่อ 4G/5G อ่อนหรือแกว่ง
 
-หากอยู่ขั้นต่ำแล้วยังมี loss/RTT/jitter สูงต่อเนื่อง และเปิด `ลดเป็น 720p30 ชั่วคราว` ไว้ Control Center จะสั่ง Sender ลด Capture เพื่อรักษาความต่อเนื่องของภาพ
-
-## การใช้งาน
-
-1. อัปโหลดไฟล์ทั้งหมดขึ้น GitHub Pages ผ่าน HTTPS
-2. iPhone เปิด `sender.html`
-3. เลือก 1080p30 → เปิดกล้อง → เริ่มส่งภาพ
-4. คอมเปิด `control.html`
-5. เลือก `Smart Network — เน็ตอ่อน`
-6. ตั้ง Maximum 8 Mbps / Minimum 1.8 Mbps / Buffer 200 ms
-7. กดเชื่อมต่อ
-8. คัดลอก OBS Browser Source URL ไปใส่ OBS
-
-## หมายเหตุ
-
-- Smart bitrate ของ OBS อยู่ใน `receiver.html` ดังนั้น OBS แต่ละ Browser Source ปรับ bitrate ของ connection ตัวเองได้
-- Capture fallback 720p30 ต้องมี Control Center เชื่อมอยู่ เพราะ Control Center เป็นตัวส่งคำสั่งกลับไป iPhone
-- WebRTC มี congestion control ของตัวเองอยู่แล้ว โหมด Smart นี้เป็นชั้นควบคุม target bitrate เพิ่มเติมเพื่อให้ตอบสนองกับเครือข่ายมือถือที่แกว่งได้ชัดเจนขึ้น
-- Safari/PWA จากการทดสอบปัจจุบัน: 1920×1080 ได้สูงสุดประมาณ 30 fps ขณะที่ 1280×720 สามารถได้ถึง 60 fps บนอุปกรณ์ที่ทดสอบ
-
-
-## v0.7 Smooth Zoom
-- ซูมแบบค่อย ๆ ramp แทนการกระโดดทีละ 0.1/0.2x
-- ปุ่ม − / + รองรับกดค้างเพื่อซูมต่อเนื่อง
-- เลือกความเร็ว ช้า / ปกติ / เร็ว
-- ใช้ hardware zoom constraint ของกล้องเมื่อ Safari เปิด capability ให้
-- Control Center อ่าน min/max/current zoom จาก telemetry ของ iPhone
-- ข้อจำกัด PWA: จุดที่ iPhone/Safari สลับ physical lens อาจยังมี jump ตามระบบ; Native iOS ภายหลังใช้ AVCaptureDevice ramp ได้เนียนกว่านี้
+### หมายเหตุหน้าต่างเลือกอุปกรณ์ของ Android
+หน้าต่าง “เลือกอุปกรณ์ที่คุณต้องการใช้บนเว็บไซต์นี้” เป็น UI ของ browser/Android เว็บไซต์ปิดทิ้งเองไม่ได้ หาก browser ตั้งให้ถามทุกครั้ง อาจยังขึ้น 1 ครั้งเมื่อมีการขอกล้องใหม่จริง ๆ เช่นสลับหน้า↔หลัง แต่ v0.8 จะไม่สร้างคำขอซ้ำโดยไม่จำเป็นเหมือนรุ่นก่อน
