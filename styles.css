@@ -289,3 +289,65 @@ body.fullscreen-active .sender-call-controls{flex:none}
 .call-icon-btn{color:#d9edf8}
 .call-icon-btn:hover,.call-icon-btn:focus-visible{color:#79dbff;border-color:#3d718e}
 .call-icon-btn.is-active{color:#79dbff;border-color:#3d718e;background:#10283a}
+
+/* v0.11.10 — iOS message sheet: keep quick replies fully visible -------- */
+.sender-message-panel{
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  max-height:min(84dvh,680px);
+  padding-bottom:env(safe-area-inset-bottom);
+}
+.sender-message-panel .sender-sheet-header{flex:0 0 auto}
+.sender-message-history{
+  flex:1 1 auto;
+  min-height:96px;
+  max-height:none;
+  overflow:auto;
+  -webkit-overflow-scrolling:touch;
+}
+.sender-quick-replies{
+  flex:0 0 auto;
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:7px;
+  overflow:visible;
+  padding:10px 16px 9px;
+  border-top:1px solid #173044;
+  background:#0b1b29;
+}
+.sender-quick-replies button{
+  width:100%;
+  min-width:0;
+  min-height:42px;
+  padding:8px 6px;
+  border-radius:12px;
+  font-size:13px;
+  line-height:1.2;
+  white-space:normal;
+  overflow:visible;
+  text-overflow:clip;
+  touch-action:manipulation;
+  -webkit-user-select:none;
+  user-select:none;
+  -webkit-touch-callout:none;
+}
+.sender-message-compose{
+  flex:0 0 auto;
+  padding-bottom:max(14px,env(safe-area-inset-bottom));
+  background:#0b1b29;
+}
+@media(max-width:360px){
+  .sender-quick-replies{gap:6px;padding-inline:12px}
+  .sender-quick-replies button{font-size:12px;padding-inline:4px}
+}
+@media (orientation:landscape) and (max-height:620px) and (pointer:coarse){
+  .sender-message-panel{
+    max-height:calc(100dvh - 12px);
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  .sender-message-history{min-height:58px}
+  .sender-quick-replies{padding-top:7px;padding-bottom:7px}
+  .sender-quick-replies button{min-height:38px}
+  .sender-message-compose{padding-top:7px;padding-bottom:max(8px,env(safe-area-inset-bottom))}
+}

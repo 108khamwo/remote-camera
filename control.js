@@ -513,4 +513,4 @@ $('#copy').onclick=async()=>{if(!$('#obsUrl').value)return;await navigator.clipb
 setInterval(markOffline,2000);
 window.addEventListener('beforeunload',()=>{try{discoveryCtl?.stop?.()}catch{};try{discoveryVdo?.stopPublishing?.()}catch{};try{discoveryVdo?.disconnect?.()}catch{}});
 startDiscovery().catch(e=>{log(`Auto Discovery error: ${e.message}`);$('#discoveryStatus').innerHTML='<b>เชื่อมไม่สำเร็จ</b><span>กด “ค้นหากล้องใหม่” เพื่อลองอีกครั้ง</span>'});
-log(`v0.11.9 พร้อม — Control Data Hub + Preview เปิดจาก Stream ID โดยตรง • Offline grace ${OFFLINE_MS/1000}s`);
+log(`v0.11.10 พร้อม — Control Data Hub + Preview เปิดจาก Stream ID โดยตรง • Offline grace ${OFFLINE_MS/1000}s`);
