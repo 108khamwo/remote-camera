@@ -1,13 +1,16 @@
 <!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OBS HQ Receiver</title><style>html,body{margin:0;background:#000;color:#fff;font:14px system-ui;height:100%}body{display:grid;place-items:center}</style></head><body><div id="msg">กำลังเปิด HQ WebRTC viewer…</div><script>
 (()=>{
   const p=new URLSearchParams(location.search);
+  const room=p.get('room')||'remote-cam-test';
   const stream=p.get('stream')||'cam01';
   const bitrate=Math.max(500,Math.min(20000,parseInt(p.get('bitrate')||'8000',10)||8000));
   const buffer=Math.max(0,Math.min(1000,parseInt(p.get('buffer')||'200',10)||0));
   const codec=(p.get('codec')||'h264').toLowerCase();
   const preview=p.get('preview')==='1';
   const u=new URL('https://vdo.ninja/');
-  // Direct view โดยไม่เข้ารูปแบบ room guest เพื่อให้ viewer เป็นคนกำหนดคุณภาพเต็ม
+  // Sender ถูก publish อยู่ใน Room ดังนั้น Viewer ต้องเข้าห้องเดียวกันด้วย
+  // Solo link เป็นรูปแบบมาตรฐานสำหรับดึงแขกหนึ่งตัวจาก Room เข้า OBS
+  u.searchParams.set('room',room);
   u.searchParams.set('view',stream);
   u.searchParams.set('videobitrate',String(bitrate));
   u.searchParams.set('scale','100');

@@ -190,6 +190,6 @@ $('#quality').onchange=async()=>{
   if(cameraStream){try{await openCamera({facing:currentFacing,deviceId:$('#deviceSelect').value})}catch(e){log(`Quality switch error: ${e.message}`)}}
 };
 window.addEventListener('beforeunload',()=>stopAll());
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=04').catch(()=>{});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=041').catch(()=>{});
 $('#statHint').textContent=q().hint;
-log('v0.4 พร้อมใช้งาน — Direct Camera Track + replaceTrack + motion profile');
+log('v0.4.1 พร้อมใช้งาน — Direct Camera Track + replaceTrack + motion profile');

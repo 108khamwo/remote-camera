@@ -2,6 +2,7 @@ const $=s=>document.querySelector(s);let vdo=null;const logEl=$('#log');
 function log(m){logEl.textContent+=`[${new Date().toLocaleTimeString()}] ${m}\n`;logEl.scrollTop=logEl.scrollHeight}
 function receiverUrl({preview=false}={}){
   const u=new URL('receiver.html',location.href);
+  u.searchParams.set('room',$('#room').value.trim());
   u.searchParams.set('stream',$('#streamId').value.trim());
   u.searchParams.set('bitrate',$('#bitrate').value);
   u.searchParams.set('buffer',$('#buffer').value);
@@ -46,4 +47,4 @@ $('#connect').onclick=()=>connect().catch(e=>{log(`Connect error: ${e.message}`)
 $('#zoom').oninput=e=>{$('#zoomValue').value=Number(e.target.value).toFixed(1);send('zoom',{value:Number(e.target.value)})};
 $('#zoomOut').onclick=()=>{const z=$('#zoom');z.value=Math.max(+z.min,+z.value-.2);z.dispatchEvent(new Event('input'))};$('#zoomIn').onclick=()=>{const z=$('#zoom');z.value=Math.min(+z.max,+z.value+.2);z.dispatchEvent(new Event('input'))};
 $('#copy').onclick=async()=>{await navigator.clipboard.writeText($('#obsUrl').value);$('#copy').textContent='คัดลอกแล้ว';setTimeout(()=>$('#copy').textContent='คัดลอก',1200)};
-log('v0.4 พร้อม — Preview/OBS ใช้ bitrate ที่กำหนดจากฝั่งรับ');
+log('v0.4.1 พร้อม — แก้ HQ Viewer ให้เข้าห้องเดียวกับ Sender แล้ว');

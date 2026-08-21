@@ -1,5 +1,5 @@
 {
-  "name": "Remote Camera Lab v0.4",
+  "name": "Remote Camera Lab v0.4.1",
   "short_name": "RemoteCam",
   "start_url": "./index.html",
   "display": "standalone",
