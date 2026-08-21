@@ -484,7 +484,7 @@ $('#cameraChips').addEventListener('click',e=>{const b=e.target.closest('[data-i
 $('#controlMessageOpen').onclick=()=>{$('#controlMessagePanel').hidden=!$('#controlMessagePanel').hidden;renderControlMessages()};
 $('#controlMessageSendSelected').onclick=()=>{const input=$('#controlMessageInput');if(sendControlMessage(input.value,{broadcast:false}))input.value=''};
 $('#controlMessageSendAll').onclick=()=>{const input=$('#controlMessageInput');if(sendControlMessage(input.value,{broadcast:true}))input.value=''};
-$('#controlMessageInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#controlMessageSendAll').click()}});
+$('#controlMessageInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#controlMessageSendSelected').click()}});
 $('#controlMessageToast').addEventListener('click',()=>{$('#controlMessagePanel').hidden=false;$('#controlMessageToast').hidden=true;renderControlMessages()});
 $('#refreshDiscovery').onclick=()=>restartDiscovery().catch(e=>log(`Discovery restart error: ${e.message}`));
 $('#forgetOffline').onclick=()=>{cameras=cameras.filter(c=>c.online);if(selectedCameraId&&!cameras.some(c=>c.id===selectedCameraId))rememberSelectedCamera('');registrySignature='';saveCameras();renderRegistry(null,{force:true});log('ล้างรายการ Offline แล้ว')};
@@ -506,4 +506,4 @@ $('#copy').onclick=async()=>{if(!$('#obsUrl').value)return;await navigator.clipb
 setInterval(markOffline,2000);
 window.addEventListener('beforeunload',()=>{try{discoveryCtl?.stop?.()}catch{};try{discoveryVdo?.disconnect?.()}catch{}});
 startDiscovery().catch(e=>{log(`Auto Discovery error: ${e.message}`);$('#discoveryStatus').innerHTML='<b>เชื่อมไม่สำเร็จ</b><span>กด “ค้นหากล้องใหม่” เพื่อลองอีกครั้ง</span>'});
-log(`v0.11.7 พร้อม — Message Core v0.11.2 • Preview เปิดจาก Stream ID โดยตรง + เลือกกล้องแสดงตลอด • Offline grace ${OFFLINE_MS/1000}s`);
+log(`v0.11.2 พร้อม — Preview เปิดจาก Stream ID โดยตรง + เลือกกล้องแสดงตลอด • Offline grace ${OFFLINE_MS/1000}s`);

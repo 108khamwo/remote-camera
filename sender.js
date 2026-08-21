@@ -700,9 +700,9 @@ $('#senderMessageInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.pr
 document.querySelectorAll('[data-quick-reply]').forEach(btn=>btn.addEventListener('click',()=>{if(sendSenderMessage(btn.dataset.quickReply||''))closeSheets()}));
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&isPublishing)requestWakeLock()});
 window.addEventListener('beforeunload',()=>stopAll());
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=0117').catch(()=>{});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=0112').catch(()=>{});
 $('#statHint').textContent=q().hint;
 $('#statSmartProfile').textContent=smartProfile;
 initIdentity();updateSimpleStatus();
 $('#newStreamId').onclick=generateNewStreamId;
-log(`v0.11.7 พร้อมใช้งาน — Message Core v0.11.2 • ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
+log(`v0.11.2 พร้อมใช้งาน — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
