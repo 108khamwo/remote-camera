@@ -418,7 +418,7 @@ function handleReceiverStats(d){
   }else updateLiveStatusBase();
   const badge=$('#smartBadge');badge.textContent=smart?(d.state&&d.state!=='waiting'?`SMART ${stateThai(d.state)}`:'SMART'):'MANUAL';badge.classList.toggle('ok',d.state==='good');
   if(d.action==='bitrate'&&d.reason&&smart)log(`Smart Network → ${(d.currentBitrate/1000).toFixed(1)} Mbps (${d.reason})`);
-  // v0.11.3: unavailable receiver metrics are hidden instead of showing placeholder dashes.
+  // v0.11.5: unavailable receiver metrics are hidden instead of showing placeholder dashes.
 }
 function resetTelemetry(){lastTelemetry=null;$('#telName').textContent=activeName();$('#telPlatform').textContent=activeCamera()?.platform||'-';$('#telRequested').textContent='รอข้อมูล…';['telActual','telMeasured','telCamera','telVerdict','telSmartProfile'].forEach(id=>$('#'+id).textContent='-')}
 
@@ -506,4 +506,4 @@ $('#copy').onclick=async()=>{if(!$('#obsUrl').value)return;await navigator.clipb
 setInterval(markOffline,2000);
 window.addEventListener('beforeunload',()=>{try{discoveryCtl?.stop?.()}catch{};try{discoveryVdo?.disconnect?.()}catch{}});
 startDiscovery().catch(e=>{log(`Auto Discovery error: ${e.message}`);$('#discoveryStatus').innerHTML='<b>เชื่อมไม่สำเร็จ</b><span>กด “ค้นหากล้องใหม่” เพื่อลองอีกครั้ง</span>'});
-log(`v0.11.3 พร้อม — Preview เปิดจาก Stream ID โดยตรง + เลือกกล้องแสดงตลอด • Offline grace ${OFFLINE_MS/1000}s`);
+log(`v0.11.5 พร้อม — Preview เปิดจาก Stream ID โดยตรง + เลือกกล้องแสดงตลอด • Offline grace ${OFFLINE_MS/1000}s`);

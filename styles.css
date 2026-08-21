@@ -226,3 +226,60 @@ body.screen-resting .sender-call-stage video{visibility:hidden}
     border-radius: 20px;
   }
 }
+
+
+/* v0.11.5 — Control Center visual cleanup -------------------------------- */
+.control-brand{display:flex;align-items:center;gap:9px}
+.ui-icon{display:inline-block;position:relative;flex:0 0 auto;color:currentColor}
+.ui-icon-monitor{width:21px;height:15px;border:2px solid #8fcbe4;border-radius:3px;background:#10283a}
+.ui-icon-monitor::before{content:"";position:absolute;left:7px;right:7px;bottom:-5px;height:4px;border-left:2px solid #8fcbe4;border-right:2px solid #8fcbe4}
+.ui-icon-monitor::after{content:"";position:absolute;left:4px;right:4px;bottom:-7px;height:2px;border-radius:999px;background:#8fcbe4}
+.ui-icon-message{width:16px;height:13px;border:1.7px solid currentColor;border-radius:6px}
+.ui-icon-message::after{content:"";position:absolute;left:3px;bottom:-4px;width:6px;height:6px;border-left:1.7px solid currentColor;transform:skew(-30deg)}
+
+/* Keep the message tool light: readable content, smaller footprint. */
+.control-message-tools{align-items:center}
+.control-message-tools .control-message-open{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:40px;padding:8px 13px;font-size:13px}
+.control-message-panel{margin-top:8px;padding-top:9px}
+.control-message-compose{grid-template-columns:minmax(0,1fr) auto auto;gap:7px}
+.control-message-compose input{height:41px;padding:8px 11px;font-size:14px}
+.control-message-compose button{min-height:41px;padding:8px 12px;font-size:13px;border-radius:11px}
+.control-message-history{gap:5px;max-height:118px;margin-top:8px;padding-right:5px;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#315a73 #091722}
+.control-msg-item{border-radius:10px;padding:6px 9px;font-size:14px;line-height:1.35}
+.control-msg-meta{font-size:11px;margin-bottom:2px}
+
+/* Dark, thin scrollbars for Control Center instead of the browser-white bar. */
+.compact-control .control-message-history,
+.compact-control .log,
+.compact-control .sender-message-history,
+.compact-control details,
+.compact-control .sender-sheet-scroll{
+  scrollbar-width:thin;
+  scrollbar-color:#315a73 #091722;
+}
+.compact-control .control-message-history::-webkit-scrollbar,
+.compact-control .log::-webkit-scrollbar{width:8px;height:8px}
+.compact-control .control-message-history::-webkit-scrollbar-track,
+.compact-control .log::-webkit-scrollbar-track{background:#091722;border-radius:999px}
+.compact-control .control-message-history::-webkit-scrollbar-thumb,
+.compact-control .log::-webkit-scrollbar-thumb{background:#315a73;border:2px solid #091722;border-radius:999px}
+.compact-control .control-message-history::-webkit-scrollbar-thumb:hover,
+.compact-control .log::-webkit-scrollbar-thumb:hover{background:#447795}
+
+@media(max-width:700px){
+  .control-message-history{max-height:105px}
+  .control-message-compose{grid-template-columns:1fr 1fr}
+  .control-message-compose input{grid-column:1/-1}
+}
+
+/* v0.11.5 — Sender fullscreen control ------------------------------------ */
+.call-svg-icon{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+.sender-fullscreen-notice{position:fixed;z-index:95;left:50%;top:max(74px,calc(env(safe-area-inset-top) + 58px));transform:translateX(-50%);width:min(92vw,520px);padding:11px 14px;border-radius:14px;border:1px solid rgba(112,215,255,.38);background:rgba(5,18,28,.96);box-shadow:0 18px 46px rgba(0,0,0,.44);color:#eef7ff;font-size:13px;line-height:1.45;text-align:center;backdrop-filter:blur(14px)}
+.sender-fullscreen-notice[hidden]{display:none!important}
+body.fullscreen-active{overflow:hidden!important;background:#000}
+body.fullscreen-active .sender-call-shell{width:100vw;height:100dvh;min-height:100dvh;max-width:none;padding-bottom:max(8px,env(safe-area-inset-bottom));overflow:hidden;background:#000}
+body.fullscreen-active .sender-call-stage{flex:1;min-height:0;max-height:none;aspect-ratio:auto}
+body.fullscreen-active .sender-call-topbar{flex:none}
+body.fullscreen-active .sender-call-controls{flex:none}
+@media(pointer:fine){#fullscreenBtn{display:none}}
+@media(max-width:380px){.sender-call-top-actions{gap:4px}.call-icon-btn{width:35px;height:35px}.call-svg-icon{width:18px;height:18px}}
