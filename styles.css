@@ -25,8 +25,11 @@
 .zoom-readout{font-size:1.35rem;font-weight:800;padding:10px 0}
 .zoom-panel[hidden],#zoomUnsupported[hidden],.zoom-hold-btn[hidden]{display:none!important}
 
-/* v0.9.9 compact Control Center */
+/* v0.10.0 compact Control Center */
 .compact-control{max-width:1120px}.camera-bar-card{padding:12px 14px}.camera-bar-head{display:flex;align-items:center;justify-content:space-between;gap:14px}.camera-bar-head .section-title{margin-bottom:3px}.camera-bar-head .camera-chips{justify-content:flex-end}.preview-card{padding:10px}.compact-details{margin-top:10px}.compact-details summary{list-style:none;cursor:pointer;color:#cfe9f6;font-weight:700;font-size:13px}.compact-details summary::-webkit-details-marker{display:none}.compact-details summary::after{content:' ▾';color:var(--muted)}.compact-details[open] summary::after{content:' ▴'}.advanced-card{margin-top:12px}.compact-kv{grid-template-columns:88px 1fr}.compact-control .notice{display:none}@media(max-width:700px){.camera-bar-head{align-items:flex-start;flex-direction:column}.camera-bar-head .camera-chips{justify-content:flex-start}.compact-control .grid{gap:12px}}
 
-/* v0.9.9: camera selection stays visible; preview is independent from discovery telemetry. */
+/* v0.10.0: camera selection stays visible; preview is independent from discovery telemetry. */
 .camera-select-row{display:grid;grid-template-columns:minmax(260px,1.1fr) minmax(220px,.9fr);gap:14px;align-items:end}.camera-select-main label{margin-bottom:6px}.camera-select-main select{min-height:46px}.camera-chips-main{margin-top:10px}.camera-bar-card>.advanced{margin-top:10px}@media(max-width:700px){.camera-select-row{grid-template-columns:1fr}.camera-select-main{order:0}}
+
+/* v0.10.0: smooth zoom preset buttons (0.5× / 1×) */
+.zoom-preset-block{padding-top:2px}.zoom-preset-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.zoom-preset-btn{-webkit-user-select:none!important;user-select:none!important;-webkit-touch-callout:none!important;-webkit-tap-highlight-color:transparent;touch-action:manipulation}.zoom-preset-btn[hidden]{display:none!important}.zoom-preset-row:has(.zoom-preset-btn[hidden]:first-child) {grid-template-columns:1fr}

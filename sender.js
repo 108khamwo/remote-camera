@@ -47,7 +47,8 @@ function initIdentity(){
 function generateNewStreamId(){const id=`cam_${platformSlug()}_${shortId(8)}`;$('#streamId').value=id;if($('#streamIdView'))$('#streamIdView').value=id;localStorage.setItem('remoteCamStreamId',id);$('#cameraName').value=`${PLATFORM} ${id.slice(-4).toUpperCase()}`;localStorage.setItem('remoteCamName',$('#cameraName').value.trim());log(`สร้าง Device ID ใหม่อัตโนมัติ: ${id}`)}
 function publisherLabel(){const name=($('#cameraName').value.trim()||$('#streamId').value).replace(/\|/g,' ');return `RCAM2|${DEVICE_ID}|${name}|${PLATFORM}|${BROWSER}`}
 
-// Smooth Zoom v0.9.9
+// Smooth Zoom v0.10.0
+// Adds 0.5× / 1× smooth return presets when the camera capability range supports them.
 // PWA browsers do not expose AVFoundation/Camera2 native ramping consistently.
 // Strategy:
 // 1) +/- buttons use a continuous velocity ramp.
@@ -80,6 +81,21 @@ function updateZoomUi(v=zoomState.current){
   if(readout)readout.textContent=`${Number(v).toFixed(2)}×`;
   const info=$('#zoomInfo');
   if(info)info.textContent=`ช่วง ${zoomState.min}× – ${zoomState.max}× • ความเร็ว ${zoomSpeedKey()==='slow'?'ช้า':zoomSpeedKey()==='fast'?'เร็ว':'ปกติ'} • กด − / + ค้างเพื่อซูม`;
+}
+function updateZoomPresetButtons(){
+  const b05=$('#zoomPreset05'),b1=$('#zoomPreset1');
+  const can=value=>zoomState.supported && value>=zoomState.min-0.001 && value<=zoomState.max+0.001;
+  if(b05)b05.hidden=!can(0.5);
+  if(b1)b1.hidden=!can(1);
+}
+function smoothZoomPreset(value){
+  if(!zoomState.supported)return;
+  // Preset buttons deliberately use the same slow ramp the user liked from press-and-hold zoom.
+  if($('#zoomSpeed'))$('#zoomSpeed').value='slow';
+  updateZoomUi();
+  setSmoothZoomTarget(value,{speed:'slow'});
+  log(`Zoom preset ${Number(value).toFixed(value<1?1:0)}× — ซูมสมูทแบบช้า`);
+  sendTelemetry();
 }
 async function applyOneZoom(v,{fine=true}={}){
   const t=cameraStream?.getVideoTracks?.()[0];
@@ -312,10 +328,11 @@ async function configureZoom(track){
     const current=Number(track.getSettings().zoom||caps.zoom.min);
     zoomState.min=Number(caps.zoom.min);zoomState.max=Number(caps.zoom.max);zoomState.step=Number(caps.zoom.step||0.1);zoomState.current=current;zoomState.virtual=current;zoomState.target=current;zoomState.drive=0;zoomState.velocity=0;zoomState.coasting=false;zoomState.pending=null;zoomState.fineUnsupported=false;zoomState.supported=true;
     if($('#zoomSpeed'))$('#zoomSpeed').value='slow';
-    updateZoomUi(current);ensureZoomLoop();
-    log(`Zoom API พร้อม: ${zoomState.min}×–${zoomState.max}× • ค่าเริ่มต้นช้า`);
+    updateZoomUi(current);updateZoomPresetButtons();ensureZoomLoop();
+    log(`Zoom API พร้อม: ${zoomState.min}×–${zoomState.max}× • ค่าเริ่มต้นช้า • มีปุ่มระยะลัดตามช่วงที่รองรับ`);
   }else{
     zoomState={...zoomState,min:1,max:1,step:.1,current:1,virtual:1,target:1,drive:0,velocity:0,coasting:false,pending:null,fineUnsupported:false,supported:false};
+    updateZoomPresetButtons();
     log(`Zoom API ไม่พร้อมบน ${PLATFORM}/${BROWSER} — ซ่อนปุ่ม Zoom`);
   }
 }
@@ -480,6 +497,8 @@ $('#rearBtn').onclick=()=>openCamera({facing:'environment'}).catch(e=>log(`Switc
 $('#deviceSelect').onchange=()=>{log('เลือกกล้องขั้นสูงแล้ว — ยังไม่สลับจนกว่าจะกด “ใช้กล้องที่เลือก”')};
 $('#applyDeviceBtn').onclick=()=>{const id=$('#deviceSelect').value;if(!id){explicitDeviceId='';log('กลับเป็นโหมดอัตโนมัติ/หน้า-หลัง');return}openCamera({deviceId:id,facing:currentFacing}).catch(x=>log(`Device error: ${x.message}`))};
 $('#zoomSpeed').onchange=()=>{updateZoomUi();sendTelemetry()};
+$('#zoomPreset05').onclick=()=>smoothZoomPreset(0.5);
+$('#zoomPreset1').onclick=()=>smoothZoomPreset(1);
 function bindHoldZoom(btn,dir){
   let activePointer=null;
   const block=e=>{e.preventDefault();e.stopPropagation();};
@@ -512,9 +531,9 @@ $('#quality').onchange=async()=>{
   if(cameraStream){try{await openCamera({facing:currentFacing,deviceId:explicitDeviceId})}catch(e){log(`Quality switch error: ${e.message}`)}}
 };
 window.addEventListener('beforeunload',()=>stopAll());
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=099').catch(()=>{});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=0100').catch(()=>{});
 $('#statHint').textContent=q().hint;
 $('#statSmartProfile').textContent=smartProfile;
 initIdentity();
 $('#newStreamId').onclick=generateNewStreamId;
-log(`v0.9.9 พร้อมใช้งาน — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
+log(`v0.10.0 พร้อมใช้งาน — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
