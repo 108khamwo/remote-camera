@@ -17,6 +17,23 @@ function updateObs(){
   $('#statCodec').textContent=$('#codec').value?$('#codec').value.toUpperCase():'Auto';
 }
 function reloadPreview(){const f=$('#remoteFrame');if(f.src)f.src=receiverUrl({preview:true})}
+function setTelemetry(d){
+  const req=d?.requested||{}, act=d?.actual||{};
+  const reqF=Number(req.fps||0), actF=Number(act.fps||0), meas=Number(d?.measuredFps||0);
+  $('#telRequested').textContent=reqF?`${req.width||'?'}×${req.height||'?'} @≤${reqF}`:'-';
+  $('#telActual').textContent=(act.width||act.height)?`${act.width||'?'}×${act.height||'?'} @${actF?actF.toFixed(1):'?'} fps`:'-';
+  $('#telMeasured').textContent=meas?`${meas.toFixed(1)} fps`:'กำลังวัด…';
+  $('#telCamera').textContent=d?.cameraLabel||act.facingMode||'-';
+  let verdict='ค่าปกติ';
+  if(reqF>=55){
+    if(actF && actF<50) verdict=`Safari/กล้องจำกัดที่ ~${actF.toFixed(0)} fps`;
+    else if(meas && meas<50) verdict=`settings ใกล้ 60 แต่เฟรมจริง ~${meas.toFixed(0)} fps`;
+    else if(meas>=50) verdict=`ฝั่งกล้องผ่าน 60 fps ✓ (${meas.toFixed(1)})`;
+    else verdict='กำลังทดสอบ 60 fps…';
+  } else if(meas){ verdict=`ฝั่งกล้อง ~${meas.toFixed(1)} fps`; }
+  $('#telVerdict').textContent=verdict;
+}
+function extractData(e){return e?.detail?.data??e?.detail??e?.data}
 updateObs();
 ['room','streamId','bitrate','buffer','codec'].forEach(id=>$('#'+id).addEventListener('change',()=>{updateObs();reloadPreview()}));
 $('#room').addEventListener('input',updateObs);$('#streamId').addEventListener('input',updateObs);
@@ -32,6 +49,7 @@ async function connect(){
   vdo.addEventListener('peerLatency',e=>{const v=e.detail?.latency??e.detail?.rtt??e.detail?.value;if(v!=null)$('#latency').textContent=`${Math.round(v)} ms`});
   vdo.addEventListener('connectionRecovered',()=>log('Control recovered'));
   vdo.addEventListener('connectionFailed',()=>log('Control connection failed'));
+  vdo.addEventListener('dataReceived',e=>{const d=extractData(e);if(d?.type==='remote-camera-telemetry')setTelemetry(d)});
   await vdo.connect();await vdo.joinRoom({room});
   // data-only connection: ภาพจริงใช้ VDO.Ninja viewer ที่ร้องขอ bitrate สูงกว่า
   await vdo.view(streamID,{audio:false,video:false,label:'control'});
@@ -40,11 +58,11 @@ async function connect(){
 }
 async function disconnect(){
   try{if(vdo){await vdo.stopViewing?.($('#streamId').value.trim());await vdo.disconnect?.()}}catch{}
-  vdo=null;$('#remoteFrame').src='about:blank';$('#status').textContent='DISCONNECTED';$('#status').classList.remove('ok');$('#latency').textContent='HQ VIEW';log('Disconnected')
+  vdo=null;$('#remoteFrame').src='about:blank';$('#telRequested').textContent='รอข้อมูล…';$('#telActual').textContent='-';$('#telMeasured').textContent='-';$('#telCamera').textContent='-';$('#telVerdict').textContent='-';$('#status').textContent='DISCONNECTED';$('#status').classList.remove('ok');$('#latency').textContent='HQ VIEW';log('Disconnected')
 }
 function send(command,extra={}){if(!vdo){log('ยังไม่ได้เชื่อมต่อ Remote Control');return}const payload={type:'remote-camera',command,...extra,ts:Date.now()};try{vdo.sendData(payload);log(`ส่งคำสั่ง ${command}`)}catch(e){log(`Send error: ${e.message}`)}}
 $('#connect').onclick=()=>connect().catch(e=>{log(`Connect error: ${e.message}`);vdo=null});$('#disconnect').onclick=()=>disconnect();$('#front').onclick=()=>send('front');$('#rear').onclick=()=>send('rear');
 $('#zoom').oninput=e=>{$('#zoomValue').value=Number(e.target.value).toFixed(1);send('zoom',{value:Number(e.target.value)})};
 $('#zoomOut').onclick=()=>{const z=$('#zoom');z.value=Math.max(+z.min,+z.value-.2);z.dispatchEvent(new Event('input'))};$('#zoomIn').onclick=()=>{const z=$('#zoom');z.value=Math.min(+z.max,+z.value+.2);z.dispatchEvent(new Event('input'))};
 $('#copy').onclick=async()=>{await navigator.clipboard.writeText($('#obsUrl').value);$('#copy').textContent='คัดลอกแล้ว';setTimeout(()=>$('#copy').textContent='คัดลอก',1200)};
-log('v0.4.1 พร้อม — แก้ HQ Viewer ให้เข้าห้องเดียวกับ Sender แล้ว');
+log('v0.5 พร้อม — รับ FPS Telemetry จาก iPhone เพื่อวิเคราะห์ 60 fps');

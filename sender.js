@@ -3,12 +3,13 @@ function log(m){const t=new Date().toLocaleTimeString();logEl.textContent+=`[${t
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 let cameraStream=null,audioStream=null,outStream=null,vdo=null,currentFacing='environment',isPublishing=false,lastRemoteTs=0;
 let peerIds=new Set();
+let measuredCameraFps=0, frameMeterGeneration=0, telemetryTimer=null;
 const video=$('#cameraVideo');
 
 const PRESETS={
   '1080_30':{w:1920,h:1080,fps:30,hint:'motion',label:'1080p / 30'},
-  '1080_60':{w:1920,h:1080,fps:60,hint:'motion',label:'1080p / 60'},
-  '720_60':{w:1280,h:720,fps:60,hint:'motion',label:'720p / 60'},
+  '1080_60':{w:1920,h:1080,fps:60,hint:'motion',label:'1080p / สูงสุด 60'},
+  '720_60':{w:1280,h:720,fps:60,hint:'motion',label:'720p / สูงสุด 60'},
   '720_30':{w:1280,h:720,fps:30,hint:'motion',label:'720p / 30'},
   '1080_24_detail':{w:1920,h:1080,fps:24,hint:'detail',label:'1080p / 24 detail'}
 };
@@ -48,10 +49,72 @@ async function acquireCamera({facing=currentFacing,deviceId=''}={}){
   return getCamera(strictVideoConstraints(target),idealVideoConstraints(target));
 }
 
+function fpsCapabilityText(track){
+  try{
+    const c=track.getCapabilities?.();
+    const f=c?.frameRate;
+    if(!f)return 'Safari ไม่รายงาน';
+    if(typeof f==='object' && f.min!=null && f.max!=null)return `${Math.round(f.min)}–${Math.round(f.max)} fps`;
+    return String(f);
+  }catch{return 'ไม่ทราบ'}
+}
+
+function startFrameMeter(){
+  const myGeneration=++frameMeterGeneration;
+  measuredCameraFps=0;
+  $('#statMeasuredFps').textContent='กำลังวัด…';
+  if(typeof video.requestVideoFrameCallback!=='function'){
+    $('#statMeasuredFps').textContent='Safari รุ่นนี้วัดเฟรมจริงไม่ได้';
+    return;
+  }
+  let frames=0, started=performance.now(), lastUpdate=started;
+  const onFrame=(now)=>{
+    if(myGeneration!==frameMeterGeneration)return;
+    frames++;
+    const elapsed=now-started;
+    if(elapsed>=1800){
+      measuredCameraFps=(frames*1000)/elapsed;
+      $('#statMeasuredFps').textContent=`${measuredCameraFps.toFixed(1)} fps`;
+      frames=0;started=now;lastUpdate=now;
+    }
+    video.requestVideoFrameCallback(onFrame);
+  };
+  video.requestVideoFrameCallback(onFrame);
+}
+
+function telemetrySnapshot(){
+  const t=cameraStream?.getVideoTracks?.()[0];
+  const st=t?.getSettings?.()||{};
+  const preset=q();
+  return {
+    type:'remote-camera-telemetry',
+    ts:Date.now(),
+    requested:{width:preset.w,height:preset.h,fps:preset.fps,label:preset.label},
+    actual:{width:st.width||0,height:st.height||0,fps:Number(st.frameRate||0),facingMode:st.facingMode||currentFacing},
+    measuredFps:Number(measuredCameraFps||0),
+    cameraLabel:t?.label||'',
+    fpsCapability:fpsCapabilityText(t),
+    publishing:!!isPublishing
+  };
+}
+
+function sendTelemetry(){
+  if(!vdo||!isPublishing)return;
+  try{vdo.sendData(telemetrySnapshot())}catch{}
+}
+
+function startTelemetry(){
+  if(telemetryTimer)clearInterval(telemetryTimer);
+  telemetryTimer=setInterval(sendTelemetry,1500);
+  setTimeout(sendTelemetry,350);
+}
+
 function updateCameraStatus(track){
   const s=track.getSettings(),{w,h,fps,hint}=q();
-  const sw=s.width||video.videoWidth||0,sh=s.height||video.videoHeight||0,sf=s.frameRate||0;
-  $('#statCamera').textContent=`${sw||'?'}×${sh||'?'} @${sf?Math.round(sf):'?'}`;
+  const sw=s.width||video.videoWidth||0,sh=s.height||video.videoHeight||0,sf=Number(s.frameRate||0);
+  $('#statRequested').textContent=`${w}×${h} @≤${fps}`;
+  $('#statCamera').textContent=`${sw||'?'}×${sh||'?'} @${sf?sf.toFixed(sf%1?1:0):'?'}`;
+  $('#statFpsCap').textContent=fpsCapabilityText(track);
   $('#statOutput').textContent=`Direct ${sw||'?'}×${sh||'?'} track`;
   $('#statHint').textContent=hint;
   $('#camBadge').textContent=track.label||currentFacing;
@@ -59,7 +122,7 @@ function updateCameraStatus(track){
   $('#statSharp').textContent=landscape?'แนวนอน ✓':'แนวตั้ง — หมุน iPhone';
   $('#statSharp').className=landscape?'goodtext':'warntext';
   if(!landscape)log(`⚠ กล้องรายงาน ${sw}×${sh} แนวตั้ง — งาน OBS 16:9 แนะนำหมุน iPhone แนวนอน`);
-  if(sf && sf < fps-5) log(`⚠ ขอ ${fps}fps แต่กล้องให้ประมาณ ${Math.round(sf)}fps`);
+  if(sf && sf < fps-5) log(`⚠ Requested สูงสุด ${fps}fps แต่ Camera settings ให้ประมาณ ${sf.toFixed(1)}fps`);
 }
 
 async function configureZoom(track){
@@ -106,6 +169,7 @@ async function openCamera({facing=currentFacing,deviceId=''}={}){
   cameraStream=nextStream;
   video.srcObject=nextStream;
   await video.play();
+  startFrameMeter();
   updateCameraStatus(nextTrack);
   await configureZoom(nextTrack);
   await listDevices();
@@ -145,14 +209,14 @@ async function startPublishing(){
   if(!room||!streamID)throw new Error('กรุณาระบุ Room และ Stream ID');
   vdo=new VDONinjaSDK({autoRecover:true,autoRelay:true,salt:'vdo.ninja'});
   vdo.addEventListener('connected',()=>{$('#statRtc').textContent='signaling connected';log('เชื่อม signaling แล้ว')});
-  vdo.addEventListener('publishing',()=>{isPublishing=true;$('#liveBadge').textContent='LIVE';$('#liveBadge').classList.add('ok');$('#statRtc').textContent='PUBLISHING';log('เริ่มส่ง WebRTC แล้ว')});
-  vdo.addEventListener('peerConnected',e=>{const id=e.detail?.uuid;if(id){peerIds.add(id);updatePeerCount();log(`Viewer connected (${peerIds.size})`)}});
+  vdo.addEventListener('publishing',()=>{isPublishing=true;$('#liveBadge').textContent='LIVE';$('#liveBadge').classList.add('ok');$('#statRtc').textContent='PUBLISHING';log('เริ่มส่ง WebRTC แล้ว');startTelemetry()});
+  vdo.addEventListener('peerConnected',e=>{const id=e.detail?.uuid;if(id){peerIds.add(id);updatePeerCount();log(`Viewer connected (${peerIds.size})`);setTimeout(sendTelemetry,250)}});
   vdo.addEventListener('peerDisconnected',e=>{const id=e.detail?.uuid;if(id){peerIds.delete(id);updatePeerCount();log(`Viewer disconnected (${peerIds.size})`)}});
   vdo.addEventListener('connectionRecovered',()=>log('WebRTC recovered'));
   vdo.addEventListener('connectionFailed',()=>log('WebRTC connection failed'));
   const onData=e=>{const d=e.detail?.data??e.detail??e.data;if(d&&typeof d==='object')handleRemote(d)};vdo.addEventListener('dataReceived',onData);
   await vdo.connect();await vdo.joinRoom({room});await vdo.publish(stream,{room,streamID,label:streamID});
-  isPublishing=true;$('#liveBadge').textContent='LIVE';$('#liveBadge').classList.add('ok');$('#statRtc').textContent='PUBLISHING';
+  isPublishing=true;$('#liveBadge').textContent='LIVE';$('#liveBadge').classList.add('ok');$('#statRtc').textContent='PUBLISHING';startTelemetry();
 }
 
 async function handleRemote(d){
@@ -169,6 +233,8 @@ async function handleRemote(d){
 async function stopAll(){
   try{if(vdo){await vdo.stopPublishing?.();await vdo.disconnect?.()}}catch{}
   isPublishing=false;peerIds.clear();updatePeerCount();
+  if(telemetryTimer){clearInterval(telemetryTimer);telemetryTimer=null}
+  frameMeterGeneration++;measuredCameraFps=0;
   if(cameraStream){cameraStream.getTracks().forEach(t=>t.stop());cameraStream=null}
   if(audioStream){audioStream.getTracks().forEach(t=>t.stop());audioStream=null}
   outStream=null;
@@ -190,6 +256,6 @@ $('#quality').onchange=async()=>{
   if(cameraStream){try{await openCamera({facing:currentFacing,deviceId:$('#deviceSelect').value})}catch(e){log(`Quality switch error: ${e.message}`)}}
 };
 window.addEventListener('beforeunload',()=>stopAll());
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=041').catch(()=>{});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=050').catch(()=>{});
 $('#statHint').textContent=q().hint;
-log('v0.4.1 พร้อมใช้งาน — Direct Camera Track + replaceTrack + motion profile');
+log('v0.5 พร้อมใช้งาน — เพิ่ม Actual/Measured FPS Telemetry สำหรับทดสอบ 60 fps');

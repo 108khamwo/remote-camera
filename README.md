@@ -1,8 +1,8 @@
-# Remote Camera PWA v0.4.1
+# Remote Camera PWA v0.5
 
 Prototype สำหรับส่งกล้อง iPhone ผ่าน WebRTC ไปยัง OBS และควบคุมสลับกล้องจาก Control Center
 
-## จุดเปลี่ยนสำคัญใน v0.4
+## จุดเปลี่ยนสำคัญใน v0.5
 
 - ส่ง **Camera MediaStreamTrack โดยตรง** เข้า VDO.Ninja SDK แทน Canvas captureStream
 - เวลาสลับกล้อง/เปลี่ยน preset ใช้ `vdo.replaceTrack(oldTrack, newTrack)` เพื่อคง peer connection เดิม
@@ -40,8 +40,15 @@ Prototype สำหรับส่งกล้อง iPhone ผ่าน WebRTC 
 Bitrate ใน VDO.Ninja P2P โดยทั่วไปเป็นค่าที่ฝั่ง viewer ร้องขอ จึงถูกใส่ไว้ใน OBS/Preview viewer URL ไม่ใช่ตัวเลือก encoder ที่หน้า Sender โดยตรง
 
 
-## แก้ไข v0.4.1
+## แก้ไข v0.5
 
 - แก้ HQ Viewer / OBS URL ให้ส่ง `room` ไปด้วย
 - เนื่องจาก Sender publish `cam01` ภายใน `remote-cam-test` จึงต้องใช้ Solo link รูปแบบ `?room=ROOM&view=STREAM&solo`
-- v0.4 ลืมใส่ Room ใน receiver ทำให้ Remote Control ต่อได้ แต่ Preview/OBS ไม่มีภาพ
+- v0.5 ลืมใส่ Room ใน receiver ทำให้ Remote Control ต่อได้ แต่ Preview/OBS ไม่มีภาพ
+
+
+## v0.5 FPS Telemetry
+- Sender แสดง Requested FPS, `MediaStreamTrack.getSettings().frameRate`, FPS ที่วัดจากเฟรมจริงด้วย `requestVideoFrameCallback()` และช่วง FPS capability ที่ Safari เปิดให้
+- Sender กระจาย Telemetry ผ่าน WebRTC data channel ไป Control Center ทุก ~1.5 วินาที
+- Control Center สรุปอัตโนมัติว่า Requested 60 แต่ capture จริงอยู่ราว 30 หรือไม่
+- ค่า 60 fps ใน PWA เปลี่ยนความหมายเป็น **สูงสุด 60 fps** เพราะ Safari อาจเลือกค่าต่ำกว่า
