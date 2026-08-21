@@ -92,7 +92,7 @@ function ensureZoomLoop(){
     const now=performance.now(); const dt=Math.min(.12,Math.max(.02,(now-zoomState.lastTick)/1000)); zoomState.lastTick=now;
     const range=Math.max(.1,zoomState.max-zoomState.min);
     const maxSpeed=zoomMaxSpeed(range);
-    // v0.9.4: keep a continuous virtual zoom position. Hardware zoom is often
+    // v0.9.5: keep a continuous virtual zoom position. Hardware zoom is often
     // quantized (for example 0.1x steps). Previously slow/normal calculated a
     // movement smaller than one hardware step, then restarted from current each
     // tick, so they could appear completely stuck while fast happened to work.
@@ -476,9 +476,9 @@ $('#quality').onchange=async()=>{
   if(cameraStream){try{await openCamera({facing:currentFacing,deviceId:explicitDeviceId})}catch(e){log(`Quality switch error: ${e.message}`)}}
 };
 window.addEventListener('beforeunload',()=>stopAll());
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=094').catch(()=>{});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=095').catch(()=>{});
 $('#statHint').textContent=q().hint;
 $('#statSmartProfile').textContent=smartProfile;
 initIdentity();
 $('#newStreamId').onclick=generateNewStreamId;
-log(`v0.9.4 พร้อมใช้งาน — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
+log(`v0.9.5 พร้อมใช้งาน — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
