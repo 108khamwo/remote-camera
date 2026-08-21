@@ -20,8 +20,14 @@ function updateMicUi(){
     btn.setAttribute('aria-label',micMuted?'เปิดเสียงไมโครโฟน':'ปิดเสียงไมโครโฟน');
     btn.title=micMuted?'เปิดเสียงไมโครโฟน':'ปิดเสียงไมโครโฟน';
   }
-  if(on)on.hidden=micMuted;
-  if(off)off.hidden=!micMuted;
+  if(on){
+    on.hidden=micMuted;
+    on.style.display=micMuted?'none':'block';
+  }
+  if(off){
+    off.hidden=!micMuted;
+    off.style.display=micMuted?'block':'none';
+  }
   const live=audioStream?.getAudioTracks?.()[0];
   if(live)live.enabled=!micMuted;
   const stat=$('#statMic');
@@ -780,4 +786,4 @@ $('#statHint').textContent=q().hint;
 $('#statSmartProfile').textContent=smartProfile;
 initIdentity();updateSimpleStatus();updateMicUi();
 $('#newStreamId').onclick=generateNewStreamId;
-log(`v0.11.12 พร้อมใช้งาน — Control Data Hub — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
+log(`v0.11.13 พร้อมใช้งาน — Control Data Hub — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
