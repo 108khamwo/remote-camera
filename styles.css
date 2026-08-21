@@ -438,3 +438,129 @@ body.fullscreen-active .sender-call-controls{flex:none}
   .camera-refresh{min-width:96px}
   .control-message-tools .control-message-open{min-width:104px}
 }
+
+
+/* v0.11.20 — minimal centered landing page */
+.home-body{
+  min-height:100dvh;
+  display:grid;
+  place-items:center;
+  padding:24px;
+  background:
+    radial-gradient(circle at 50% 24%, rgba(0,192,250,.10), transparent 34%),
+    linear-gradient(180deg,#07111b 0%,#0a1926 58%,#08131e 100%);
+}
+.home-shell{
+  width:min(680px,100%);
+  margin:auto;
+}
+.home-card{
+  position:relative;
+  width:100%;
+  padding:42px 42px 34px;
+  border:1px solid rgba(95,166,205,.22);
+  border-radius:28px;
+  background:linear-gradient(180deg,rgba(17,38,55,.97),rgba(11,28,42,.97));
+  box-shadow:0 30px 90px rgba(0,0,0,.36), inset 0 1px 0 rgba(255,255,255,.025);
+}
+.home-camera-icon{
+  width:62px;
+  height:62px;
+  display:grid;
+  place-items:center;
+  margin:0 0 22px;
+  border-radius:18px;
+  color:#58d8ff;
+  background:rgba(0,192,250,.10);
+  border:1px solid rgba(88,216,255,.18);
+}
+.home-camera-icon svg{width:32px;height:32px}
+.home-card h1{
+  margin:0 0 34px;
+  max-width:590px;
+  font-size:clamp(30px,5.1vw,46px);
+  line-height:1.14;
+  letter-spacing:-.025em;
+  font-weight:850;
+  color:#f4f9fd;
+}
+.home-actions{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:14px;
+}
+.home-action{
+  min-height:104px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:5px;
+  padding:18px 20px;
+  border-radius:18px;
+  text-decoration:none;
+  transition:transform .14s ease,filter .14s ease,border-color .14s ease;
+  -webkit-tap-highlight-color:transparent;
+}
+.home-action:active{transform:scale(.985)}
+.home-action:hover{filter:brightness(1.06)}
+.home-action-sender{
+  color:#dff7ff;
+  background:#10263a;
+  border:1px solid #2a536e;
+}
+.home-action-control{
+  color:#00141d;
+  background:linear-gradient(180deg,#18c9ff,#00b7ef);
+  border:1px solid transparent;
+  box-shadow:0 14px 34px rgba(0,192,250,.16);
+}
+.home-action-kicker{
+  font-size:13px;
+  font-weight:650;
+  opacity:.72;
+}
+.home-action strong{
+  font-size:23px;
+  line-height:1.1;
+  font-weight:850;
+}
+.home-version{
+  margin-top:24px;
+  text-align:center;
+  color:#6f8da2;
+  font-size:11px;
+  font-weight:700;
+}
+@media(max-width:600px){
+  .home-body{padding:16px}
+  .home-card{padding:30px 20px 24px;border-radius:24px}
+  .home-camera-icon{width:56px;height:56px;border-radius:16px;margin-bottom:18px}
+  .home-card h1{font-size:clamp(28px,9vw,38px);margin-bottom:26px}
+  .home-actions{grid-template-columns:1fr;gap:10px}
+  .home-action{min-height:86px}
+  .home-title-break{display:none}
+}
+
+/* v0.11.20 — compact OBS usage hint */
+.home-obs-help{
+  margin-top:22px;
+  padding-top:18px;
+  border-top:1px solid rgba(95,166,205,.16);
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  color:#8faabd;
+  font-size:12px;
+  line-height:1.55;
+}
+.home-obs-help strong{
+  flex:none;
+  color:#cfefff;
+  font-size:12px;
+  white-space:nowrap;
+}
+@media(max-width:600px){
+  .home-obs-help{display:block;text-align:center;margin-top:18px;padding-top:15px;font-size:11.5px}
+  .home-obs-help strong{display:block;margin-bottom:4px}
+}
