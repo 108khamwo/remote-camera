@@ -1,7 +1,7 @@
 <!doctype html>
-<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="styles.css?v=0110"><title>Control Center</title></head>
+<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="styles.css?v=0112"><title>Control Center</title></head>
 <body><main class="wrap compact-control">
-<div class="topbar"><div class="brand">🖥️ Control Center <span class="version">v0.11.0</span></div><a class="badge" href="index.html">หน้าหลัก</a></div>
+<div class="topbar"><div class="brand">🖥️ Control Center <span class="version">v0.11.2</span></div><a class="badge" href="index.html">หน้าหลัก</a></div>
 
 <div class="card camera-bar-card">
   <div class="camera-select-row">
@@ -63,7 +63,7 @@
 <aside>
   <div class="card"><div class="section-title">OBS Browser Source</div><div class="copybox"><input id="obsUrl" readonly><button id="copy">คัดลอก</button></div></div>
   <div class="spacer"></div>
-  <div class="card"><div class="section-title">สถานะสด</div><div class="kv compact-kv"><div>โหมด</div><div id="statNetworkMode">-</div><div>เน็ต</div><div id="smartState">-</div><div>Target</div><div id="smartTarget">-</div><div>รับจริง</div><div id="smartActual">-</div><div>Loss</div><div id="smartLoss">-</div><div>RTT</div><div id="smartRtt">-</div><div>Jitter</div><div id="smartJitter">-</div></div></div>
+  <div class="card"><div class="section-title">สถานะสด</div><div class="kv compact-kv"><div>โหมด</div><div id="statNetworkMode">-</div><div id="smartTargetLabel">Bitrate</div><div id="smartTarget">-</div><div id="smartStateLabel" class="hidden">เน็ต</div><div id="smartState" class="hidden">-</div><div id="smartActualLabel" class="hidden">รับจริง</div><div id="smartActual" class="hidden">-</div><div id="smartLossLabel" class="hidden">Loss</div><div id="smartLoss" class="hidden">-</div><div id="smartRttLabel" class="hidden">RTT</div><div id="smartRtt" class="hidden">-</div><div id="smartJitterLabel" class="hidden">Jitter</div><div id="smartJitter" class="hidden">-</div></div></div>
 
   <details class="card advanced-card compact-details">
     <summary>ข้อมูลเพิ่มเติม</summary>
@@ -75,4 +75,4 @@
 </aside>
 </div></main>
 <div id="controlMessageToast" class="control-message-toast" hidden><strong id="controlMessageToastFrom">ข้อความจากกล้อง</strong><div id="controlMessageToastText"></div></div>
-<script src="sdk-loader.js?v=0110"></script><script src="control.js?v=0110"></script></body></html>
+<script src="sdk-loader.js?v=0112"></script><script src="control.js?v=0112"></script></body></html>
