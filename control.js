@@ -273,10 +273,7 @@ function handleReceiverStats(d){
   $('#smartState').textContent=stateThai(d.state);$('#smartTarget').textContent=d.currentBitrate?`${(d.currentBitrate/1000).toFixed(d.currentBitrate%1000?1:0)} Mbps`:'-';$('#smartActual').textContent=d.bitrateKbps?`${(d.bitrateKbps/1000).toFixed(2)} Mbps`:'-';$('#smartLoss').textContent=d.lossPct!=null?fmt(d.lossPct,2,'%'):'-';$('#smartRtt').textContent=d.rttMs!=null?fmt(d.rttMs,0,' ms'):'-';$('#smartJitter').textContent=d.jitterMs!=null?fmt(d.jitterMs,0,' ms'):'-';
   const badge=$('#smartBadge');badge.textContent=isSmart()?`SMART ${stateThai(d.state)}`:'MANUAL';badge.classList.toggle('ok',d.state==='good');
   if(d.action==='bitrate'&&d.reason&&isSmart())log(`Smart Network → ${(d.currentBitrate/1000).toFixed(1)} Mbps (${d.reason})`);
-  if(!isSmart()||!connectedStreamId||$('#smartFallback').value!=='1')return;
-  const now=Date.now();
-  if(d.fallbackRecommended&&!smartFallbackActive&&now-lastSmartQualityChange>10000){const current=lastTelemetry?.presetKey||smartOriginalPreset||'';if(current&&current!=='720_30'){smartOriginalPreset=smartOriginalPreset||current;smartFallbackActive=true;lastSmartQualityChange=now;send('quality',{value:'720_30',reason:'Smart Network: ฉุกเฉิน 720p30'});log('⚠ Smart Network: ลดกล้องเป็น 720p30 ชั่วคราว')}}
-  if(d.restoreRecommended&&smartFallbackActive&&now-lastSmartQualityChange>18000){const restore=smartOriginalPreset||'1080_30';smartFallbackActive=false;lastSmartQualityChange=now;send('quality',{value:restore,reason:`Smart Network: คืน ${restore}`});log(`✓ Smart Network: คืนคุณภาพ ${restore}`)}
+  // v0.9.6: Smart Network adapts viewer bitrate only. It no longer sends camera-quality commands back to phones.
 }
 function resetTelemetry(){lastTelemetry=null;$('#telName').textContent=activeName();$('#telPlatform').textContent=activeCamera()?.platform||'-';$('#telRequested').textContent='รอข้อมูล…';['telActual','telMeasured','telCamera','telVerdict','telSmartProfile'].forEach(id=>$('#'+id).textContent='-')}
 
@@ -285,7 +282,7 @@ async function openSelected(){
   const c=activeCamera();if(c&&!c.online)log('กล้องนี้ขึ้น Offline — จะลองเปิดภาพจาก Stream ID ล่าสุด');
   connectedStreamId=id;smartFallbackActive=false;smartOriginalPreset=null;resetTelemetry();
   $('#remoteFrame').src=receiverUrl({preview:true,streamId:id});
-  $('#status').textContent='CONTROL ACTIVE';$('#status').classList.add('ok');
+  $('#status').textContent='VIEW ACTIVE';$('#status').classList.add('ok');
   log(`เปิดภาพ ${activeName()} (${id}) • ${$('#bitrate').value} kbps • ${isSmart()?'Smart':'Manual'}`);
   try{discoveryVdo?.sendData({type:'remote-camera-discover',targetStream:id,ts:Date.now()},{streamID:id,allowFallback:true})}catch{}
 }
@@ -332,7 +329,7 @@ async function selectCamera(id,{open=false}={}){
   try{discoveryVdo?.sendData({type:'remote-camera-discover',targetStream:id,ts:Date.now()},{streamID:id,allowFallback:true})}catch{}
 }
 
-loadCameras();$('#room').value=systemRoom();renderRegistry();updateObs();resetTelemetry();setControlStatus('พร้อมส่งคำสั่งเมื่อพบมือถือ');
+loadCameras();$('#room').value=systemRoom();renderRegistry();updateObs();resetTelemetry();setControlStatus('ควบคุมกล้องจากหน้ามือถือ');
 ['bitrate','buffer','codec','networkMode','smartMin','smartFallback'].forEach(id=>$('#'+id).addEventListener('change',()=>{updateObs();renderMultiObs();reloadPreview()}));
 $('#cameraSelect').addEventListener('change',e=>selectCamera(e.target.value).catch(x=>log(`Select error: ${x.message}`)));
 $('#cameraChips').addEventListener('click',e=>{const b=e.target.closest('[data-id]');if(b){e.preventDefault();selectCamera(b.dataset.id).catch(x=>log(`Select error: ${x.message}`))}});
@@ -356,4 +353,4 @@ $('#copy').onclick=async()=>{if(!$('#obsUrl').value)return;await navigator.clipb
 setInterval(markOffline,2000);
 window.addEventListener('beforeunload',()=>{try{discoveryCtl?.stop?.()}catch{};try{discoveryVdo?.disconnect?.()}catch{}});
 startDiscovery().catch(e=>{log(`Auto Discovery error: ${e.message}`);$('#discoveryStatus').innerHTML='<b>เชื่อมไม่สำเร็จ</b><span>กด “ค้นหากล้องใหม่” เพื่อลองอีกครั้ง</span>'});
-log(`v0.9.5 พร้อม — Remote Control มี ACK + retry/fallback / Offline grace ${OFFLINE_MS/1000}s`);
+log(`v0.9.6 พร้อม — Control Center เน้น Preview/OBS/Network; ควบคุมกล้องจากมือถือ • Offline grace ${OFFLINE_MS/1000}s`);

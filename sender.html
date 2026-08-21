@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#08131e">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=095">
+  <link rel="stylesheet" href="styles.css?v=096">
   <title>Sender • Remote Camera</title>
 </head>
 <body>
 <main class="wrap">
   <div class="topbar">
-    <div class="brand">📱 Remote Camera <span class="version">v0.9.5</span></div>
+    <div class="brand">📱 Remote Camera <span class="version">v0.9.6</span></div>
     <div style="display:flex;gap:8px;align-items:center"><span id="platformBadge" class="badge">ตรวจอุปกรณ์…</span><a class="badge" href="index.html">หน้าหลัก</a></div>
   </div>
 
@@ -37,7 +37,7 @@
           </div>
           <div>
             <label>ความเร็วซูม</label>
-            <select id="zoomSpeed"><option value="slow">ช้า — เนียนมาก</option><option value="normal" selected>ปกติ — แนะนำ</option><option value="fast">เร็ว</option></select>
+            <select id="zoomSpeed"><option value="slow">ช้า — ปุ่ม −/+</option><option value="normal" selected>ปกติ — ปุ่ม −/+</option><option value="fast">เร็ว — ปุ่ม −/+</option></select><div class="mini">แถบ Zoom ตอบสนองตามนิ้วทันที ไม่รอไล่ย้อนหลัง • ความเร็วนี้ใช้กับปุ่ม −/+ ค้าง</div>
             <div class="mini">กดปุ่ม − / + ค้างไว้เพื่อซูมต่อเนื่อง</div>
           </div>
         </div>
@@ -90,7 +90,7 @@
             <div><label>&nbsp;</label><button id="applyDeviceBtn" class="ghost" type="button">ใช้กล้องที่เลือก</button></div>
           </div>
           <div class="spacer"></div>
-          <div class="notice"><b>Android:</b> รายการของเบราว์เซอร์กับรายการในเว็บเป็นคนละชั้นกัน v0.9.5 จึงไม่สลับกล้องทันทีเมื่อแตะรายการนี้ ต้องกด “ใช้กล้องที่เลือก” เอง เพื่อลดหน้าต่างเลือกกล้องเด้งซ้ำ</div>
+          <div class="notice"><b>Android:</b> รายการของเบราว์เซอร์กับรายการในเว็บเป็นคนละชั้นกัน v0.9.6 จึงไม่สลับกล้องทันทีเมื่อแตะรายการนี้ ต้องกด “ใช้กล้องที่เลือก” เอง เพื่อลดหน้าต่างเลือกกล้องเด้งซ้ำ</div>
         </details>
       </div>
     </section>
@@ -122,5 +122,5 @@
     </aside>
   </div>
 </main>
-<script src="sdk-loader.js?v=095"></script><script src="sender.js?v=095"></script>
+<script src="sdk-loader.js?v=096"></script><script src="sender.js?v=096"></script>
 </body></html>
