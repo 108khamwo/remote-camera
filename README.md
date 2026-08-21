@@ -1,4 +1,4 @@
-# Remote Camera PWA v0.11.2
+# Remote Camera PWA v0.11.3
 
 - Control Center: สถานะสดแสดงเฉพาะค่าที่วัดได้จริง; โหมด Manual เหลือโหมด + Bitrate และซ่อนค่า WebRTC stats ที่ไม่มีข้อมูล
 
@@ -46,8 +46,13 @@
 อัปโหลดไฟล์ทั้งหมดทับเวอร์ชันเดิมบน GitHub Pages แล้วปิด/เปิด Sender และ Control Center ใหม่ เพราะ Service Worker cache เปลี่ยนเป็น v0110
 
 
-## v0.11.2
+## v0.11.3
 - แก้ระบบข้อความสองทางให้ใช้ Room broadcast ซึ่งเป็นเส้นทางเดียวกับ Telemetry ที่ทดสอบว่าทำงานแล้ว
 - ข้อความถึงกล้องที่เลือกใช้ targetStream กรองที่ Sender แทนการเจาะ peer ชั่วคราว
 - เพิ่ม messageId, ACK, retry และกันข้อความซ้ำ
 - รองรับส่งถึงกล้องที่เลือกหรือทุกกล้องใน Room
+
+## v0.11.3
+- Sender บนมือถือแนวนอนเปลี่ยนเป็น one-screen layout แบบวิดีโอคอล: ภาพเต็มพื้นที่จอ และปุ่มควบคุมลอยทับด้านล่าง
+- ไม่มีการเลื่อนหน้าใน landscape mobile; รองรับ safe-area ของ iPhone และ Android
+- Portrait layout เดิมยังคงเหมือนเดิม

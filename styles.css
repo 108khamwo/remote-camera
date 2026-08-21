@@ -38,7 +38,7 @@
 .sender-clean{max-width:820px}.sender-topbar{margin-bottom:12px}.sender-top-actions{display:flex;gap:8px;align-items:center}.sender-main-card{padding:10px}.sender-preview{border-radius:16px}.sender-camera-toolbar{margin-top:9px}.sender-zoom-panel{margin-top:10px;border-top:1px solid var(--line);padding-top:10px}.sender-zoom-presets{margin-bottom:10px}.sender-zoom-meta{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:end}.sender-zoom-meta .zoom-readout{padding:4px 0 1px}.sender-inline-note{margin-top:9px;color:var(--muted);font-size:12px;text-align:center}.sender-actions-card{margin-top:12px}.sender-quality-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(150px,.45fr);gap:10px;align-items:end}.sender-live-state>div{min-height:43px;display:flex;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#0b1b29;color:#d7e8f3}.sender-action-buttons{display:grid;grid-template-columns:1fr 1fr .7fr;gap:8px;margin-top:10px}.sender-settings-card,.sender-diagnostics-card{margin-top:12px;padding:0;overflow:hidden}.sender-settings-card>summary,.sender-diagnostics-card>summary{cursor:pointer;padding:14px;font-weight:800;list-style:none}.sender-settings-card>summary::-webkit-details-marker,.sender-diagnostics-card>summary::-webkit-details-marker{display:none}.sender-settings-card>summary::after,.sender-diagnostics-card>summary::after{content:' ▾';color:var(--muted)}.sender-settings-card[open]>summary::after,.sender-diagnostics-card[open]>summary::after{content:' ▴'}.sender-settings-body{padding:0 14px 14px;border-top:1px solid var(--line);padding-top:14px}.sender-system-details{margin-top:12px}.sender-status-kv{grid-template-columns:120px 1fr}.sender-log{height:130px}.sender-clean .android-help{padding:9px 11px;min-height:43px}.sender-clean .notice{display:none}
 @media(max-width:560px){.sender-clean{padding:10px}.sender-topbar .brand{font-size:19px}.sender-top-actions .badge:first-child{display:none}.sender-quality-row{grid-template-columns:1fr}.sender-action-buttons{grid-template-columns:1fr 1fr}.sender-action-buttons .danger{grid-column:1/-1}.sender-zoom-meta{grid-template-columns:1fr 1fr}.sender-settings-body .row{grid-template-columns:1fr}.sender-status-kv{grid-template-columns:100px 1fr}}
 
-/* v0.11.2 Sender Call UI -------------------------------------------------- */
+/* v0.11.3 Sender Call UI -------------------------------------------------- */
 html,body.sender-call-body{background:#050a10;overscroll-behavior:none}
 body.sender-call-body{min-height:100svh;overflow-x:hidden}
 .sender-call-shell{min-height:100svh;max-width:820px;margin:0 auto;display:flex;flex-direction:column;padding:0 0 calc(14px + env(safe-area-inset-bottom));background:#050a10}
@@ -75,3 +75,154 @@ body.screen-resting .sender-call-stage video{visibility:hidden}
   .sender-call-topbar{height:58px}.sender-call-stage{flex:1;aspect-ratio:auto;min-height:52svh;max-height:calc(100svh - 205px)}.sender-call-controls{gap:9px;padding:13px 12px 6px}.call-control-btn{height:58px;border-radius:20px}.call-send-btn{height:66px;border-radius:22px}.sender-call-top-actions{gap:5px}.call-icon-btn{width:38px;height:38px;font-size:16px}.settings-details-body .row{grid-template-columns:1fr}.control-message-compose{grid-template-columns:1fr 1fr}.control-message-compose input{grid-column:1/-1}
 }
 .control-message-tools .camera-chips{flex:1;min-width:0}
+
+/* v0.11.3 — mobile landscape Sender: true one-screen video-call layout */
+@media (orientation: landscape) and (max-height: 620px) and (pointer: coarse) {
+  html, body.sender-call-body {
+    width: 100%;
+    height: 100%;
+    min-height: 100%;
+    overflow: hidden;
+    background: #000;
+  }
+
+  body.sender-call-body {
+    position: fixed;
+    inset: 0;
+    overscroll-behavior: none;
+  }
+
+  .sender-call-shell {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100dvh;
+    min-height: 0;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    gap: 0;
+    overflow: hidden;
+    background: #000;
+  }
+
+  .sender-call-stage {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    max-height: none;
+    aspect-ratio: auto;
+    border: 0;
+    border-radius: 0;
+    z-index: 0;
+  }
+
+  .sender-call-stage video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .sender-call-stage-shade {
+    background:
+      linear-gradient(180deg,rgba(0,0,0,.42),transparent 23%,transparent 64%,rgba(0,0,0,.58));
+  }
+
+  .sender-call-topbar {
+    position: absolute;
+    z-index: 10;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: auto;
+    min-height: 50px;
+    margin: 0;
+    padding:
+      max(7px, env(safe-area-inset-top))
+      max(12px, env(safe-area-inset-right))
+      7px
+      max(12px, env(safe-area-inset-left));
+    border-radius: 0;
+    background: linear-gradient(180deg,rgba(0,0,0,.60),rgba(0,0,0,.10));
+  }
+
+  .sender-call-title strong { font-size: 14px; }
+  .sender-call-platform { font-size: 10px; color: rgba(255,255,255,.75); }
+  .sender-call-top-actions { gap: 6px; }
+  .call-icon-btn {
+    width: 38px;
+    height: 38px;
+    border-color: rgba(255,255,255,.22);
+    background: rgba(0,0,0,.40);
+    backdrop-filter: blur(10px);
+  }
+
+  .sender-call-overlay-top {
+    top: max(58px, calc(env(safe-area-inset-top) + 51px));
+    left: max(12px, env(safe-area-inset-left));
+    right: max(12px, env(safe-area-inset-right));
+  }
+
+  .sender-call-status-strip {
+    left: max(14px, env(safe-area-inset-left));
+    right: max(14px, env(safe-area-inset-right));
+    bottom: max(94px, calc(env(safe-area-inset-bottom) + 82px));
+  }
+
+  .sender-zoom-preset-float {
+    right: max(14px, env(safe-area-inset-right));
+    bottom: max(128px, calc(env(safe-area-inset-bottom) + 112px));
+  }
+
+  .sender-call-controls {
+    position: absolute;
+    z-index: 12;
+    left: 50%;
+    bottom: max(10px, env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    width: min(560px, calc(100vw - max(28px, env(safe-area-inset-left)) - max(28px, env(safe-area-inset-right))));
+    display: grid;
+    grid-template-columns: 1fr 1.18fr 1fr;
+    gap: 10px;
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .call-control-btn {
+    height: 54px;
+    border-radius: 18px;
+    background: rgba(5,17,27,.68);
+    border-color: rgba(255,255,255,.22);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 8px 24px rgba(0,0,0,.22);
+  }
+
+  .call-send-btn {
+    height: 58px;
+    border-radius: 20px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.25);
+  }
+
+  .sender-call-note { display: none !important; }
+  .sender-message-toast {
+    top: max(58px, calc(env(safe-area-inset-top) + 51px));
+    left: max(14px, env(safe-area-inset-left));
+    right: auto;
+    width: min(420px, 58vw);
+  }
+
+  .sender-sheet {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+  .sender-sheet-panel {
+    width: min(760px, calc(100vw - 24px));
+    max-height: calc(100dvh - 18px);
+    margin-bottom: 9px;
+    border: 1px solid #284156;
+    border-radius: 20px;
+  }
+}
