@@ -1,11 +1,14 @@
 <!doctype html>
-<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="styles.css?v=098"><title>Control Center</title></head>
+<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="styles.css?v=099"><title>Control Center</title></head>
 <body><main class="wrap compact-control">
-<div class="topbar"><div class="brand">🖥️ Control Center <span class="version">v0.9.8</span></div><a class="badge" href="index.html">หน้าหลัก</a></div>
+<div class="topbar"><div class="brand">🖥️ Control Center <span class="version">v0.9.9</span></div><a class="badge" href="index.html">หน้าหลัก</a></div>
 
 <div class="card camera-bar-card">
-  <div class="camera-bar-head"><div><div class="section-title">กล้องออนไลน์</div><div id="discoveryStatus" class="mini">กำลังค้นหา…</div></div><div id="cameraChips" class="camera-chips"></div></div>
-  <select id="cameraSelect" class="hidden"><option>กำลังค้นหา…</option></select>
+  <div class="camera-select-row">
+    <div class="camera-select-main"><label for="cameraSelect">เลือกกล้อง</label><select id="cameraSelect"><option>กำลังค้นหา…</option></select></div>
+    <div><div class="section-title">กล้องออนไลน์</div><div id="discoveryStatus" class="mini">กำลังค้นหา…</div></div>
+  </div>
+  <div id="cameraChips" class="camera-chips camera-chips-main"></div>
   <input id="streamId" type="hidden"><input id="room" type="hidden">
   <details class="advanced compact-details">
     <summary>จัดการกล้อง</summary>
@@ -60,4 +63,4 @@
   </details>
 </aside>
 </div></main>
-<script src="sdk-loader.js?v=098"></script><script src="control.js?v=098"></script></body></html>
+<script src="sdk-loader.js?v=099"></script><script src="control.js?v=099"></script></body></html>

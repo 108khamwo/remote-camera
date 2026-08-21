@@ -94,22 +94,27 @@ function receiverUrl({preview=false,streamId=null}={}){
 function renderRegistry(preferred=null,{force=false}={}){
   const ordered=[...cameras].sort((a,b)=>(Number(b.online)-Number(a.online))||a.name.localeCompare(b.name)||a.id.localeCompare(b.id));
   const wanted=cleanId(preferred||selectedCameraId||$('#streamId').value||$('#cameraSelect').value);
-  let chosen=ordered.find(c=>c.id===wanted)?.id||'';
+  let chosen=ordered.find(c=>c.id===wanted)?.id||wanted||'';
   const chosenCamera=ordered.find(c=>c.id===chosen);
-  // Before the user explicitly chooses a camera, prefer an online camera so opening
-  // Control Center immediately produces a picture instead of sticking to a stale offline item.
+  // Keep the last selected stream even when discovery/telemetry is temporarily unavailable.
+  // The video viewer is independent from discovery, so a known Stream ID can still be viewed.
   if((!chosen||(!userSelectionLocked&&chosenCamera&&!chosenCamera.online))&&ordered.length){
-    chosen=ordered.find(c=>c.online)?.id||ordered[0].id;
+    chosen=ordered.find(c=>c.online)?.id||chosen||ordered[0].id;
   }
-  rememberSelectedCamera(chosen);
+  if(chosen)rememberSelectedCamera(chosen);
 
   const signature=ordered.map(c=>[c.id,c.name,c.platform,c.browser,c.online?'1':'0'].join('|')).join(';;');
   const structuralChanged=force||signature!==registrySignature;
   const sel=$('#cameraSelect');
   if(structuralChanged){
     sel.innerHTML='';
-    if(!ordered.length){const o=document.createElement('option');o.textContent='ยังไม่พบกล้อง';o.value='';sel.appendChild(o);sel.disabled=true}
-    else{sel.disabled=false;ordered.forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=`${c.online?'🟢':'⚫'} ${c.name}`;sel.appendChild(o)})}
+    if(!ordered.length){
+      if(chosen){const o=document.createElement('option');o.textContent=`◌ กล้องล่าสุด • ${chosen}`;o.value=chosen;sel.appendChild(o);sel.disabled=false}
+      else{const o=document.createElement('option');o.textContent='ยังไม่พบกล้อง';o.value='';sel.appendChild(o);sel.disabled=true}
+    } else {
+      sel.disabled=false;ordered.forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=`${c.online?'🟢':'⚫'} ${c.name}`;sel.appendChild(o)});
+      if(chosen&&!ordered.some(c=>c.id===chosen)){const o=document.createElement('option');o.value=chosen;o.textContent=`◌ กล้องล่าสุด • ${chosen}`;sel.appendChild(o)}
+    }
     const chips=$('#cameraChips');chips.innerHTML='';
     ordered.forEach(c=>{const b=document.createElement('button');b.type='button';b.className='camera-chip'+(c.online?' online':' offline');b.dataset.id=c.id;b.innerHTML=`<span class="presence-dot"></span>${c.name} <small>${c.platform||''}</small>`;chips.appendChild(b)});
     registrySignature=signature;renderMultiObs();
@@ -117,15 +122,17 @@ function renderRegistry(preferred=null,{force=false}={}){
   if(chosen){sel.value=chosen;$('#streamId').value=chosen}else{$('#streamId').value=''}
   document.querySelectorAll('#cameraChips [data-id]').forEach(b=>b.classList.toggle('active',cleanId(b.dataset.id)===chosen));
   const count=onlineCount();
-  $('#discoveryStatus').textContent=count?`${count} กล้องออนไลน์ • ภาพเปิดอัตโนมัติ`:'กำลังรอกล้องส่งภาพ…';
+  $('#discoveryStatus').textContent=count?`${count} กล้องออนไลน์`:(chosen?'กำลังค้นหา • เปิดกล้องล่าสุดไว้แล้ว':'กำลังค้นหากล้อง…');
   updateObs();
   maybeAutoOpen();
 }
 function maybeAutoOpen(){
   if(autoOpenPending)return;
-  const c=activeCamera();
-  if(!c?.online||!c.id)return;
-  if(connectedStreamId===c.id&&$('#remoteFrame').src&&$('#remoteFrame').src!=='about:blank')return;
+  const id=activeId();
+  if(!id)return;
+  // Do not wait for discovery/telemetry. OBS and the Control preview both use the same
+  // receiver path, so a known Stream ID should be opened immediately.
+  if(connectedStreamId===id&&$('#remoteFrame').src&&$('#remoteFrame').src!=='about:blank')return;
   autoOpenPending=true;
   Promise.resolve().then(()=>openSelected()).catch(e=>log(`Auto view error: ${e.message}`)).finally(()=>{autoOpenPending=false});
 }
@@ -276,16 +283,16 @@ function handleReceiverStats(d){
   $('#smartState').textContent=stateThai(d.state);$('#smartTarget').textContent=d.currentBitrate?`${(d.currentBitrate/1000).toFixed(d.currentBitrate%1000?1:0)} Mbps`:'-';$('#smartActual').textContent=d.bitrateKbps?`${(d.bitrateKbps/1000).toFixed(2)} Mbps`:'-';$('#smartLoss').textContent=d.lossPct!=null?fmt(d.lossPct,2,'%'):'-';$('#smartRtt').textContent=d.rttMs!=null?fmt(d.rttMs,0,' ms'):'-';$('#smartJitter').textContent=d.jitterMs!=null?fmt(d.jitterMs,0,' ms'):'-';
   const badge=$('#smartBadge');badge.textContent=isSmart()?`SMART ${stateThai(d.state)}`:'MANUAL';badge.classList.toggle('ok',d.state==='good');
   if(d.action==='bitrate'&&d.reason&&isSmart())log(`Smart Network → ${(d.currentBitrate/1000).toFixed(1)} Mbps (${d.reason})`);
-  // v0.9.8: Smart Network adapts viewer bitrate only. It no longer sends camera-quality commands back to phones.
+  // v0.9.9: Smart Network adapts viewer bitrate only. It no longer sends camera-quality commands back to phones.
 }
 function resetTelemetry(){lastTelemetry=null;$('#telName').textContent=activeName();$('#telPlatform').textContent=activeCamera()?.platform||'-';$('#telRequested').textContent='รอข้อมูล…';['telActual','telMeasured','telCamera','telVerdict','telSmartProfile'].forEach(id=>$('#'+id).textContent='-')}
 
 async function openSelected(){
   const id=activeId();if(!id)throw new Error('ยังไม่พบกล้อง');
-  const c=activeCamera();if(c&&!c.online)log('กล้องนี้ขึ้น Offline — จะลองเปิดภาพจาก Stream ID ล่าสุด');
+  const c=activeCamera();if(!c?.online)log('เปิด Preview จาก Stream ID โดยตรง — ไม่รอ Auto Discovery');
   connectedStreamId=id;smartFallbackActive=false;smartOriginalPreset=null;resetTelemetry();
   $('#remoteFrame').src=receiverUrl({preview:true,streamId:id});
-  $('#status').textContent='LIVE';$('#status').classList.add('ok');
+  $('#status').textContent='กำลังรับภาพ';$('#status').classList.add('ok');
   log(`เปิดภาพ ${activeName()} (${id}) • ${$('#bitrate').value} kbps • ${isSmart()?'Smart':'Manual'}`);
   try{discoveryVdo?.sendData({type:'remote-camera-discover',targetStream:id,ts:Date.now()},{streamID:id,allowFallback:true})}catch{}
 }
@@ -327,14 +334,14 @@ async function selectCamera(id,{fromUser=true}={}){
   rememberSelectedCamera(id);
   $('#streamId').value=id;$('#cameraSelect').value=id;renderRegistry(id);resetTelemetry();
   if(connectedStreamId&&connectedStreamId!==id)closeSelected();
-  const c=activeCamera();
-  if(c?.online)await openSelected();
-  else $('#status').textContent='กล้อง Offline';
+  // Selection controls the viewer directly; discovery is only for presence/name metadata.
+  await openSelected();
   if(previous!==id)log(`เลือกกล้อง: ${activeName()} (${id})`);
   try{discoveryVdo?.sendData({type:'remote-camera-discover',targetStream:id,ts:Date.now()},{streamID:id,allowFallback:true})}catch{}
 }
 
 loadCameras();$('#room').value=systemRoom();if($('#roomText'))$('#roomText').textContent=$('#room').value;renderRegistry();updateObs();resetTelemetry();setControlStatus('ควบคุมกล้องจากหน้ามือถือ');
+setTimeout(()=>maybeAutoOpen(),350);
 ['bitrate','buffer','codec','networkMode','smartMin','smartFallback'].forEach(id=>$('#'+id).addEventListener('change',()=>{updateObs();renderMultiObs();reloadPreview()}));
 $('#cameraSelect').addEventListener('change',e=>selectCamera(e.target.value,{fromUser:true}).catch(x=>log(`Select error: ${x.message}`)));
 $('#cameraChips').addEventListener('click',e=>{const b=e.target.closest('[data-id]');if(b){e.preventDefault();selectCamera(b.dataset.id,{fromUser:true}).catch(x=>log(`Select error: ${x.message}`))}});
@@ -358,4 +365,4 @@ $('#copy').onclick=async()=>{if(!$('#obsUrl').value)return;await navigator.clipb
 setInterval(markOffline,2000);
 window.addEventListener('beforeunload',()=>{try{discoveryCtl?.stop?.()}catch{};try{discoveryVdo?.disconnect?.()}catch{}});
 startDiscovery().catch(e=>{log(`Auto Discovery error: ${e.message}`);$('#discoveryStatus').innerHTML='<b>เชื่อมไม่สำเร็จ</b><span>กด “ค้นหากล้องใหม่” เพื่อลองอีกครั้ง</span>'});
-log(`v0.9.8 พร้อม — Control Center เปิดภาพออนไลน์อัตโนมัติ + UI กระชับ • Offline grace ${OFFLINE_MS/1000}s`);
+log(`v0.9.9 พร้อม — Preview เปิดจาก Stream ID โดยตรง + เลือกกล้องแสดงตลอด • Offline grace ${OFFLINE_MS/1000}s`);
