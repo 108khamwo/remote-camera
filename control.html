@@ -1,7 +1,7 @@
 <!doctype html>
-<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="styles.css?v=092"><title>Control Center</title></head>
+<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="styles.css?v=094"><title>Control Center</title></head>
 <body><main class="wrap">
-<div class="topbar"><div class="brand">🖥️ Control Center <span class="version">v0.9.2</span></div><a class="badge" href="index.html">หน้าหลัก</a></div>
+<div class="topbar"><div class="brand">🖥️ Control Center <span class="version">v0.9.4</span></div><a class="badge" href="index.html">หน้าหลัก</a></div>
 
 <div class="card">
   <div class="section-title">ค้นหากล้องอัตโนมัติ</div>
@@ -28,6 +28,7 @@
   <div class="card">
     <div class="preview"><iframe id="remoteFrame" class="preview-frame" allow="autoplay; fullscreen" referrerpolicy="no-referrer"></iframe><div class="overlay"><div id="status" class="status">รอเลือกกล้อง</div><div style="display:flex;gap:6px"><div id="smartBadge" class="status">MANUAL</div><div id="latency" class="status">HQ VIEW</div></div></div></div>
     <div class="toolbar"><button id="front" class="ghost">กล้องหน้า</button><button id="rear" class="ghost">กล้องหลัง</button><button id="zoomOut" class="ghost zoom-hold-btn">− Zoom</button><button id="zoomIn" class="ghost zoom-hold-btn">+ Zoom</button></div>
+    <div id="controlAck" class="control-ack">พร้อมส่งคำสั่งเมื่อพบมือถือ</div>
     <div class="spacer"></div>
     <div class="row3"><div><label>Remote Smooth Zoom</label><input id="zoom" type="range" min="1" max="8" step="0.1" value="1"></div><div><label>Zoom ปัจจุบัน</label><input id="zoomValue" value="1.00×" readonly><div class="mini">ช่วงกล้อง: <span id="zoomCap">รอมือถือ…</span></div></div><div><label>ความเร็วซูม</label><select id="zoomSpeed"><option value="slow">ช้า — เนียนมาก</option><option value="normal" selected>ปกติ — แนะนำ</option><option value="fast">เร็ว</option></select><div class="mini">กด − / + ค้างเพื่อซูมเหมือนกล้องวิดีโอ</div></div></div>
   </div>
@@ -58,4 +59,4 @@
   <div class="spacer"></div><div class="card"><div class="section-title">Log</div><div id="log" class="log"></div></div>
 </aside>
 </div></main>
-<script src="sdk-loader.js?v=092"></script><script src="control.js?v=092"></script></body></html>
+<script src="sdk-loader.js?v=094"></script><script src="control.js?v=094"></script></body></html>

@@ -2,6 +2,7 @@ const $=s=>document.querySelector(s); const logEl=$('#log');
 function log(m){const t=new Date().toLocaleTimeString();logEl.textContent+=`[${t}] ${m}\n`;logEl.scrollTop=logEl.scrollHeight}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 let cameraStream=null,audioStream=null,outStream=null,vdo=null,currentFacing='environment',isPublishing=false,lastRemoteTs=0;
+const processedRemoteCommands=new Map();
 let explicitDeviceId='', openingCamera=false;
 let peerIds=new Set();
 let measuredCameraFps=0, frameMeterGeneration=0, telemetryTimer=null;
@@ -48,7 +49,7 @@ function publisherLabel(){const name=($('#cameraName').value.trim()||$('#streamI
 
 // Smooth Zoom: Safari/PWA does not expose AVFoundation's native zoom ramp,
 // so we emulate a camera-like ramp by applying many small hardware-zoom steps.
-let zoomState={min:1,max:1,step:.1,current:1,target:1,drive:0,velocity:0,coasting:false,applying:false,timer:null,lastTick:0};
+let zoomState={min:1,max:1,step:.1,current:1,virtual:1,target:1,drive:0,velocity:0,coasting:false,applying:false,timer:null,lastTick:0};
 // Zoom speed is based on approximate end-to-end travel time, not a fraction that becomes too fast on cameras with a large zoom range.
 // slow ≈ 32s, normal ≈ 12s, fast ≈ 6s across the reported optical/digital zoom range.
 const ZOOM_TRAVEL_SECONDS={slow:32,normal:12,fast:6};
@@ -91,7 +92,10 @@ function ensureZoomLoop(){
     const now=performance.now(); const dt=Math.min(.12,Math.max(.02,(now-zoomState.lastTick)/1000)); zoomState.lastTick=now;
     const range=Math.max(.1,zoomState.max-zoomState.min);
     const maxSpeed=zoomMaxSpeed(range);
-    // Gentle acceleration/deceleration is especially important for press-and-hold control.
+    // v0.9.4: keep a continuous virtual zoom position. Hardware zoom is often
+    // quantized (for example 0.1x steps). Previously slow/normal calculated a
+    // movement smaller than one hardware step, then restarted from current each
+    // tick, so they could appear completely stuck while fast happened to work.
     const accel=Math.max(maxSpeed*2.2,.18);
     let desiredVelocity=0;
     if(zoomState.drive){
@@ -99,38 +103,39 @@ function ensureZoomLoop(){
     }else if(zoomState.coasting){
       desiredVelocity=0;
     }else{
-      const delta=zoomState.target-zoomState.current;
-      if(Math.abs(delta)>Math.max((zoomState.step||.1)*.55,.01)){
-        // proportional target tracking: naturally slows as it approaches the requested zoom
+      const delta=zoomState.target-zoomState.virtual;
+      if(Math.abs(delta)>Math.max((zoomState.step||.1)*.20,.004)){
         desiredVelocity=clamp(delta*3.2,-maxSpeed,maxSpeed);
       }
     }
     const dv=clamp(desiredVelocity-zoomState.velocity,-accel*dt,accel*dt);
     zoomState.velocity+=dv;
     if(zoomState.coasting && Math.abs(zoomState.velocity)<maxSpeed*.08){
-      zoomState.velocity=0;zoomState.coasting=false;zoomState.target=zoomState.current;return;
+      zoomState.velocity=0;zoomState.coasting=false;zoomState.target=zoomState.virtual;return;
     }
-    if(!zoomState.drive && !zoomState.coasting && Math.abs(zoomState.target-zoomState.current)<=Math.max((zoomState.step||.1)*.55,.01) && Math.abs(zoomState.velocity)<maxSpeed*.08){
-      zoomState.velocity=0; zoomState.target=zoomState.current; return;
+    if(!zoomState.drive && !zoomState.coasting && Math.abs(zoomState.target-zoomState.virtual)<=Math.max((zoomState.step||.1)*.20,.004) && Math.abs(zoomState.velocity)<maxSpeed*.08){
+      zoomState.velocity=0;zoomState.virtual=zoomState.target;await applyZoomHardware(zoomState.virtual);return;
     }
-    let next=zoomState.current+zoomState.velocity*dt;
+    let nextVirtual=zoomState.virtual+zoomState.velocity*dt;
     if(!zoomState.drive && !zoomState.coasting){
-      const before=zoomState.target-zoomState.current, after=zoomState.target-next;
-      if(before!==0 && Math.sign(before)!==Math.sign(after)){next=zoomState.target;zoomState.velocity=0}
+      const before=zoomState.target-zoomState.virtual, after=zoomState.target-nextVirtual;
+      if(before!==0 && Math.sign(before)!==Math.sign(after)){nextVirtual=zoomState.target;zoomState.velocity=0}
     }
-    if(next<=zoomState.min || next>=zoomState.max){zoomState.velocity=0}
-    await applyZoomHardware(clamp(next,zoomState.min,zoomState.max));
+    nextVirtual=clamp(nextVirtual,zoomState.min,zoomState.max);
+    if(nextVirtual<=zoomState.min || nextVirtual>=zoomState.max)zoomState.velocity=0;
+    zoomState.virtual=nextVirtual;
+    await applyZoomHardware(zoomState.virtual);
   },40); // ~25 updates/s; smooth without flooding iOS applyConstraints
 }
 function setSmoothZoomTarget(value,{speed}={}){
   if(speed && $('#zoomSpeed'))$('#zoomSpeed').value=speed;
-  zoomState.drive=0;zoomState.coasting=false; zoomState.target=clamp(Number(value),zoomState.min,zoomState.max); ensureZoomLoop();
+  zoomState.drive=0;zoomState.coasting=false; zoomState.target=clamp(Number(value),zoomState.min,zoomState.max); if(!Number.isFinite(zoomState.virtual))zoomState.virtual=zoomState.current; ensureZoomLoop();
 }
 function setZoomDrive(direction,{speed}={}){
   if(speed && $('#zoomSpeed'))$('#zoomSpeed').value=speed;
   const dir=clamp(Number(direction)||0,-1,1);
   if(dir){zoomState.drive=dir;zoomState.coasting=false;}
-  else{zoomState.drive=0;zoomState.coasting=true;zoomState.target=zoomState.current;}
+  else{zoomState.drive=0;zoomState.coasting=true;zoomState.target=zoomState.virtual;}
   ensureZoomLoop();
 }
 
@@ -270,10 +275,10 @@ async function configureZoom(track){
   if(caps.zoom){
     const current=Number(track.getSettings().zoom||caps.zoom.min);
     z.disabled=false;z.min=caps.zoom.min;z.max=caps.zoom.max;z.step=caps.zoom.step||0.1;z.value=current;
-    zoomState.min=Number(caps.zoom.min);zoomState.max=Number(caps.zoom.max);zoomState.step=Number(caps.zoom.step||0.1);zoomState.current=current;zoomState.target=current;zoomState.drive=0;zoomState.velocity=0;zoomState.coasting=false;
+    zoomState.min=Number(caps.zoom.min);zoomState.max=Number(caps.zoom.max);zoomState.step=Number(caps.zoom.step||0.1);zoomState.current=current;zoomState.virtual=current;zoomState.target=current;zoomState.drive=0;zoomState.velocity=0;zoomState.coasting=false;zoomState.virtual=zoomState.current;
     updateZoomUi(current);ensureZoomLoop();
   }else{
-    z.disabled=true;z.min=1;z.max=1;z.value=1;zoomState={...zoomState,min:1,max:1,step:.1,current:1,target:1,drive:0,velocity:0,coasting:false};
+    z.disabled=true;z.min=1;z.max=1;z.value=1;zoomState={...zoomState,min:1,max:1,step:.1,current:1,virtual:1,target:1,drive:0,velocity:0,coasting:false};
     $('#zoomInfo').textContent='Safari/อุปกรณ์นี้ไม่เปิด Zoom API ให้เว็บ';
   }
 }
@@ -374,33 +379,54 @@ async function startPublishing(){
   vdo.addEventListener('peerDisconnected',e=>{const id=e.detail?.uuid;if(id){peerIds.delete(id);updatePeerCount();log(`Viewer disconnected (${peerIds.size})`)}});
   vdo.addEventListener('connectionRecovered',()=>log('WebRTC recovered'));
   vdo.addEventListener('connectionFailed',()=>log('WebRTC connection failed'));
-  const onData=e=>{const d=e.detail?.data??e.detail??e.data;if(d&&typeof d==='object')handleRemote(d)};vdo.addEventListener('dataReceived',onData);
+  const onData=e=>{const d=e.detail?.data??e.detail??e.data;const uuid=e.detail?.uuid??e.uuid??'';if(d&&typeof d==='object')handleRemote(d,uuid)};vdo.addEventListener('dataReceived',onData);
   await vdo.connect();await vdo.joinRoom({room});await vdo.publish(stream,{room,streamID,label:publisherLabel()});
   isPublishing=true;$('#liveBadge').textContent='LIVE';$('#liveBadge').classList.add('ok');$('#statRtc').textContent='PUBLISHING';startTelemetry();
 }
 
-async function handleRemote(d){
-  if(d?.type==='remote-camera-discover'){if(!d.targetStream||normId(d.targetStream)===normId($('#streamId').value))sendTelemetry();return}
-  if(d.type!=='remote-camera')return;
-  if(d.targetStream && normId(d.targetStream)!==normId($('#streamId').value))return;if(d.ts&&d.ts===lastRemoteTs)return;if(d.ts)lastRemoteTs=d.ts;
-  $('#statRemote').textContent=`คำสั่ง: ${d.command}`;log(`Remote: ${d.command}`);
+
+function pruneProcessedCommands(){
+  const now=Date.now();for(const [k,t] of processedRemoteCommands){if(now-t>15000)processedRemoteCommands.delete(k)}
+}
+function sendRemoteAck(d,sourceUuid,{ok=true,message=''}={}){
+  if(!vdo||!d?.commandId)return;
+  const ack={type:'remote-camera-ack',commandId:d.commandId,command:d.command,ok,message,ts:Date.now(),streamID:normId($('#streamId').value),deviceID:DEVICE_ID,currentFacing,zoomCurrent:zoomState.current};
   try{
-    if(d.command==='front')await openCamera({facing:'user'});
-    if(d.command==='rear')await openCamera({facing:'environment'});
-    if(d.command==='zoom'||d.command==='zoomTarget')setSmoothZoomTarget(d.value,{speed:d.speed});
-    if(d.command==='zoomDrive')setZoomDrive(d.direction,{speed:d.speed});
-    if(d.command==='zoomStop')setZoomDrive(0,{speed:d.speed});
-    if(d.command==='device'&&d.deviceId)await openCamera({deviceId:d.deviceId});
-    if(d.command==='quality'&&d.value)await setQualityPreset(d.value,d.reason||'Remote quality');
-  }catch(e){log(`Remote error: ${e.message}`)}
+    if(sourceUuid)vdo.sendData(ack,{uuid:sourceUuid,allowFallback:true,preference:'any'});
+    else vdo.sendData(ack);
+  }catch{try{vdo.sendData(ack)}catch{}}
 }
 
+async function handleRemote(d,sourceUuid=''){
+  if(d?.type==='remote-camera-discover'){if(!d.targetStream||normId(d.targetStream)===normId($('#streamId').value))sendTelemetry();return}
+  if(d?.type!=='remote-camera')return;
+  if(d.targetStream && normId(d.targetStream)!==normId($('#streamId').value))return;
+  pruneProcessedCommands();
+  if(d.commandId&&processedRemoteCommands.has(d.commandId)){sendRemoteAck(d,sourceUuid,{ok:true,message:'duplicate acknowledged'});return}
+  if(d.commandId)processedRemoteCommands.set(d.commandId,Date.now());
+  else {if(d.ts&&d.ts===lastRemoteTs)return;if(d.ts)lastRemoteTs=d.ts}
+  $('#statRemote').textContent=`คำสั่ง: ${d.command}`;log(`Remote: ${d.command}`);
+  try{
+    let known=true;
+    if(d.command==='front')await openCamera({facing:'user'});
+    else if(d.command==='rear')await openCamera({facing:'environment'});
+    else if(d.command==='zoom'||d.command==='zoomTarget')setSmoothZoomTarget(d.value,{speed:d.speed});
+    else if(d.command==='zoomDrive')setZoomDrive(d.direction,{speed:d.speed});
+    else if(d.command==='zoomStop')setZoomDrive(0,{speed:d.speed});
+    else if(d.command==='device'&&d.deviceId)await openCamera({deviceId:d.deviceId});
+    else if(d.command==='quality'&&d.value)await setQualityPreset(d.value,d.reason||'Remote quality');
+    else known=false;
+    if(!known)throw new Error(`ไม่รู้จักคำสั่ง ${d.command}`);
+    sendRemoteAck(d,sourceUuid,{ok:true});
+    setTimeout(sendTelemetry,80);
+  }catch(e){log(`Remote error: ${e.message}`);sendRemoteAck(d,sourceUuid,{ok:false,message:e.message})}
+}
 async function stopAll(){
   try{if(vdo){await vdo.stopPublishing?.();await vdo.disconnect?.()}}catch{}
   isPublishing=false;peerIds.clear();updatePeerCount();
   if(telemetryTimer){clearInterval(telemetryTimer);telemetryTimer=null}
   if(zoomState.timer){clearInterval(zoomState.timer);zoomState.timer=null}
-  zoomState.drive=0;zoomState.velocity=0;zoomState.coasting=false;
+  zoomState.drive=0;zoomState.velocity=0;zoomState.coasting=false;zoomState.virtual=zoomState.current;
   frameMeterGeneration++;measuredCameraFps=0;
   if(cameraStream){cameraStream.getTracks().forEach(t=>t.stop());cameraStream=null}
   if(audioStream){audioStream.getTracks().forEach(t=>t.stop());audioStream=null}
@@ -450,9 +476,9 @@ $('#quality').onchange=async()=>{
   if(cameraStream){try{await openCamera({facing:currentFacing,deviceId:explicitDeviceId})}catch(e){log(`Quality switch error: ${e.message}`)}}
 };
 window.addEventListener('beforeunload',()=>stopAll());
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=092').catch(()=>{});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=094').catch(()=>{});
 $('#statHint').textContent=q().hint;
 $('#statSmartProfile').textContent=smartProfile;
 initIdentity();
 $('#newStreamId').onclick=generateNewStreamId;
-log(`v0.9.2 พร้อมใช้งาน — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
+log(`v0.9.4 พร้อมใช้งาน — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
