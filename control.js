@@ -265,10 +265,16 @@ $('#front').onclick=()=>send('front');$('#rear').onclick=()=>send('rear');
 let zoomSendTimer=null;function zoomSpeed(){return $('#zoomSpeed')?.value||'normal'}
 $('#zoom').oninput=e=>{const v=Number(e.target.value);$('#zoomValue').value=`${v.toFixed(2)}×`;clearTimeout(zoomSendTimer);zoomSendTimer=setTimeout(()=>send('zoomTarget',{value:v,speed:zoomSpeed()}),35)};
 $('#zoomSpeed').onchange=()=>send('zoomTarget',{value:Number($('#zoom').value),speed:zoomSpeed()});
-function bindRemoteHoldZoom(btn,dir){const start=e=>{e.preventDefault();send('zoomDrive',{direction:dir,speed:zoomSpeed()})};const stop=e=>{if(e)e.preventDefault();send('zoomStop',{speed:zoomSpeed()})};btn.addEventListener('pointerdown',start);btn.addEventListener('pointerup',stop);btn.addEventListener('pointercancel',stop);btn.addEventListener('pointerleave',e=>{if(e.buttons)stop(e)});btn.addEventListener('contextmenu',e=>e.preventDefault())}
+function bindRemoteHoldZoom(btn,dir){
+  let activePointer=null;
+  const block=e=>{e.preventDefault();e.stopPropagation()};
+  const start=e=>{block(e);activePointer=e.pointerId??'mouse';try{if(e.pointerId!=null)btn.setPointerCapture(e.pointerId)}catch{}btn.classList.add('holding');send('zoomDrive',{direction:dir,speed:zoomSpeed()})};
+  const stop=e=>{if(e){e.preventDefault();e.stopPropagation()}if(activePointer===null)return;try{if(e?.pointerId!=null&&btn.hasPointerCapture?.(e.pointerId))btn.releasePointerCapture(e.pointerId)}catch{}activePointer=null;btn.classList.remove('holding');send('zoomStop',{speed:zoomSpeed()})};
+  btn.addEventListener('pointerdown',start);btn.addEventListener('pointerup',stop);btn.addEventListener('pointercancel',stop);btn.addEventListener('lostpointercapture',()=>{if(activePointer!==null)stop()});['contextmenu','selectstart','dragstart'].forEach(type=>btn.addEventListener(type,block));
+}
 bindRemoteHoldZoom($('#zoomOut'),-1);bindRemoteHoldZoom($('#zoomIn'),1);
 $('#copy').onclick=async()=>{if(!$('#obsUrl').value)return;await navigator.clipboard.writeText($('#obsUrl').value);$('#copy').textContent='คัดลอกแล้ว';setTimeout(()=>$('#copy').textContent='คัดลอก',1200)};
 setInterval(markOffline,2000);
 window.addEventListener('beforeunload',()=>{try{discoveryCtl?.stop?.()}catch{};try{discoveryVdo?.disconnect?.()}catch{}});
 startDiscovery().catch(e=>{log(`Auto Discovery error: ${e.message}`);$('#discoveryStatus').innerHTML='<b>เชื่อมไม่สำเร็จ</b><span>กด “ค้นหากล้องใหม่” เพื่อลองอีกครั้ง</span>'});
-log(`v0.9.1 พร้อม — Discovery ยืนยันจาก Sender / รวม peer ซ้ำ / Offline grace ${OFFLINE_MS/1000}s`);
+log(`v0.9.2 พร้อม — Discovery ยืนยันจาก Sender / รวม peer ซ้ำ / Offline grace ${OFFLINE_MS/1000}s`);

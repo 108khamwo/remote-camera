@@ -49,9 +49,17 @@ function publisherLabel(){const name=($('#cameraName').value.trim()||$('#streamI
 // Smooth Zoom: Safari/PWA does not expose AVFoundation's native zoom ramp,
 // so we emulate a camera-like ramp by applying many small hardware-zoom steps.
 let zoomState={min:1,max:1,step:.1,current:1,target:1,drive:0,velocity:0,coasting:false,applying:false,timer:null,lastTick:0};
-const ZOOM_SPEEDS={slow:.10,normal:.20,fast:.34}; // fraction of the available zoom range / second
+// Zoom speed is based on approximate end-to-end travel time, not a fraction that becomes too fast on cameras with a large zoom range.
+// slow ≈ 32s, normal ≈ 12s, fast ≈ 6s across the reported optical/digital zoom range.
+const ZOOM_TRAVEL_SECONDS={slow:32,normal:12,fast:6};
 function zoomSpeedKey(){return $('#zoomSpeed')?.value||'normal'}
-function zoomSpeedRatio(){return ZOOM_SPEEDS[zoomSpeedKey()]||ZOOM_SPEEDS.normal}
+function zoomMaxSpeed(range){
+  const seconds=ZOOM_TRAVEL_SECONDS[zoomSpeedKey()]||ZOOM_TRAVEL_SECONDS.normal;
+  // Keep very small-range cameras responsive while preventing large-range Android cameras from racing.
+  const floor=zoomSpeedKey()==='slow'?.08:zoomSpeedKey()==='fast'?.45:.22;
+  const ceiling=zoomSpeedKey()==='slow'?.30:zoomSpeedKey()==='fast'?1.60:.85;
+  return clamp(range/seconds,floor,ceiling);
+}
 function clamp(v,min,max){return Math.max(min,Math.min(max,v))}
 function quantizeZoom(v){
   const {min,max,step}=zoomState; const st=Number(step)||.1;
@@ -82,8 +90,9 @@ function ensureZoomLoop(){
   zoomState.timer=setInterval(async()=>{
     const now=performance.now(); const dt=Math.min(.12,Math.max(.02,(now-zoomState.lastTick)/1000)); zoomState.lastTick=now;
     const range=Math.max(.1,zoomState.max-zoomState.min);
-    const maxSpeed=range*zoomSpeedRatio();
-    const accel=maxSpeed*5.0;
+    const maxSpeed=zoomMaxSpeed(range);
+    // Gentle acceleration/deceleration is especially important for press-and-hold control.
+    const accel=Math.max(maxSpeed*2.2,.18);
     let desiredVelocity=0;
     if(zoomState.drive){
       desiredVelocity=zoomState.drive*maxSpeed;
@@ -410,10 +419,29 @@ $('#applyDeviceBtn').onclick=()=>{const id=$('#deviceSelect').value;if(!id){expl
 $('#zoomRange').oninput=e=>setSmoothZoomTarget(e.target.value);
 $('#zoomSpeed').onchange=()=>{updateZoomUi();sendTelemetry()};
 function bindHoldZoom(btn,dir){
-  const start=e=>{e.preventDefault();if($('#zoomRange').disabled)return;setZoomDrive(dir);};
-  const stop=e=>{if(e)e.preventDefault();setZoomDrive(0);};
-  btn.addEventListener('pointerdown',start);btn.addEventListener('pointerup',stop);btn.addEventListener('pointercancel',stop);btn.addEventListener('pointerleave',e=>{if(e.buttons)stop(e)});
-  btn.addEventListener('contextmenu',e=>e.preventDefault());
+  let activePointer=null;
+  const block=e=>{e.preventDefault();e.stopPropagation();};
+  const start=e=>{
+    block(e);
+    if($('#zoomRange').disabled)return;
+    activePointer=e.pointerId ?? 'mouse';
+    try{if(e.pointerId!=null)btn.setPointerCapture(e.pointerId)}catch{}
+    btn.classList.add('holding');
+    setZoomDrive(dir);
+  };
+  const stop=e=>{
+    if(e){e.preventDefault();e.stopPropagation()}
+    if(activePointer===null)return;
+    try{if(e?.pointerId!=null && btn.hasPointerCapture?.(e.pointerId))btn.releasePointerCapture(e.pointerId)}catch{}
+    activePointer=null;
+    btn.classList.remove('holding');
+    setZoomDrive(0);
+  };
+  btn.addEventListener('pointerdown',start);
+  btn.addEventListener('pointerup',stop);
+  btn.addEventListener('pointercancel',stop);
+  btn.addEventListener('lostpointercapture',()=>{if(activePointer!==null)stop()});
+  ['contextmenu','selectstart','dragstart'].forEach(type=>btn.addEventListener(type,block));
 }
 bindHoldZoom($('#zoomOutBtn'),-1);bindHoldZoom($('#zoomInBtn'),1);
 $('#quality').onchange=async()=>{
@@ -422,9 +450,9 @@ $('#quality').onchange=async()=>{
   if(cameraStream){try{await openCamera({facing:currentFacing,deviceId:explicitDeviceId})}catch(e){log(`Quality switch error: ${e.message}`)}}
 };
 window.addEventListener('beforeunload',()=>stopAll());
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=090').catch(()=>{});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=092').catch(()=>{});
 $('#statHint').textContent=q().hint;
 $('#statSmartProfile').textContent=smartProfile;
 initIdentity();
 $('#newStreamId').onclick=generateNewStreamId;
-log(`v0.9.1 พร้อมใช้งาน — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
+log(`v0.9.2 พร้อมใช้งาน — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);

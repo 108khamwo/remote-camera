@@ -1,7 +1,15 @@
-# Remote Camera PWA v0.9.1 — Auto Discovery
+
+## v0.9.2 — Zoom hold fix
+- โหมดช้าลดความเร็วลงอย่างชัดเจน (ประมาณ 32 วินาทีจากสุดหนึ่งไปอีกสุดหนึ่งตามช่วง zoom ที่อุปกรณ์รายงาน)
+- เปลี่ยนความเร็วจากการคูณตามช่วง zoom แบบเดิม เป็น travel-time model เพื่อไม่ให้ Android ที่มีช่วง zoom กว้างวิ่งเร็วเกินไป
+- ลด acceleration/deceleration ให้เริ่มและหยุดนุ่มขึ้น
+- ปุ่ม −/+ Zoom ปิด text selection, long-press callout และ browser gesture
+- ใช้ Pointer Capture เพื่อให้กดค้างแล้วลากนิ้วออกจากปุ่มเล็กน้อยยังควบคุมต่อได้ และหยุดเมื่อปล่อยจริง
+
+# Remote Camera PWA v0.9.2 — Auto Discovery
 
 
-## แก้ปัญหา Discovery ซ้ำ/Online กระพริบใน v0.9.1
+## แก้ปัญหา Discovery ซ้ำ/Online กระพริบใน v0.9.2
 
 - Control Center ไม่เอา room listing หรือ transient peer มาแสดงเป็นกล้องทันทีอีกแล้ว
 - จะแสดงกล้องเมื่อได้รับ telemetry จาก Sender ตัวจริงเท่านั้น
@@ -12,7 +20,7 @@
 
 ต้นแบบส่งภาพระยะไกลจาก iPhone/Android → WebRTC → OBS
 
-## ใหม่ใน v0.9.1
+## ใหม่ใน v0.9.2
 - ไม่ต้องกรอก Room หรือ Stream ID ในการใช้งานปกติ
 - Sender สร้าง Device/Stream ID ถาวรต่อเบราว์เซอร์ให้อัตโนมัติ
 - Room สร้างจาก hostname + ชื่อโปรเจกต์ จึงเหมือนกันบนทุกเครื่องที่เปิดเว็บไซต์เดียวกัน
