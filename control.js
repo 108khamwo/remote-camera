@@ -1,27 +1,68 @@
 const $=s=>document.querySelector(s);
 const logEl=$('#log');
-let vdo=null,connectedStreamId='',targetPeerUUID='';
-let lastTelemetry=null,smartFallbackActive=false,smartOriginalPreset=null,lastSmartQualityChange=0;
-const CAMERA_STORE='remoteCamControlCamerasV1';
-const ROOM_STORE='remoteCamControlRoomV1';
+let discoveryVdo=null, discoveryCtl=null, discoveryTimer=null;
+let connectedStreamId='', lastTelemetry=null, smartFallbackActive=false, smartOriginalPreset=null,lastSmartQualityChange=0;
 let cameras=[];
+const CAMERA_STORE='remoteCamAutoCamerasV2';
+const OFFLINE_MS=7000;
 
 function log(m){logEl.textContent+=`[${new Date().toLocaleTimeString()}] ${m}\n`;logEl.scrollTop=logEl.scrollHeight}
-function isSmart(){return $('#networkMode').value==='smart'}
 function cleanId(v){return String(v||'').trim().replace(/[^\w]/g,'_')}
-function loadRegistry(){
-  try{cameras=JSON.parse(localStorage.getItem(CAMERA_STORE)||'[]')}catch{cameras=[]}
-  if(!Array.isArray(cameras)||!cameras.length)cameras=[{name:'CAM 01',id:'cam01'}];
-  cameras=cameras.filter(x=>x&&x.id).map(x=>({name:String(x.name||x.id),id:cleanId(x.id)}));
-  $('#room').value=localStorage.getItem(ROOM_STORE)||'remote-cam-test';
+function systemRoom(){
+  const host=(location.hostname||'remote').replace(/[^\w]/g,'_');
+  const project=(location.pathname.split('/').filter(Boolean)[0]||'remote_camera').replace(/[^\w]/g,'_');
+  return cleanId(`rc_${host}_${project}`);
 }
-function saveRegistry(){localStorage.setItem(CAMERA_STORE,JSON.stringify(cameras));localStorage.setItem(ROOM_STORE,$('#room').value.trim())}
-function activeName(){const id=cleanId($('#streamId').value);return cameras.find(c=>c.id===id)?.name||id||'กล้อง'}
+function isSmart(){return $('#networkMode').value==='smart'}
+function activeId(){return cleanId($('#streamId').value||$('#cameraSelect').value)}
+function activeCamera(){return cameras.find(c=>c.id===activeId())||null}
+function activeName(){const c=activeCamera();return c?.name||activeId()||'กล้อง'}
+function saveCameras(){
+  const persist=cameras.map(({id,name,platform,browser})=>({id,name,platform,browser}));
+  localStorage.setItem(CAMERA_STORE,JSON.stringify(persist));
+}
+function loadCameras(){
+  try{cameras=JSON.parse(localStorage.getItem(CAMERA_STORE)||'[]')}catch{cameras=[]}
+  if(!Array.isArray(cameras))cameras=[];
+  cameras=cameras.filter(x=>x?.id&&cleanId(x.id).startsWith('cam_')).map(x=>({id:cleanId(x.id),name:String(x.name||x.id),platform:x.platform||'',browser:x.browser||'',online:false,lastSeen:0,uuid:''}));
+}
+function parseLabel(label,id){
+  const raw=String(label||'');
+  if(raw.startsWith('RCAM|')){
+    const p=raw.split('|');
+    return {name:p[1]||id,platform:p[2]||'',browser:p[3]||''};
+  }
+  return {name:raw&&raw!==id?raw:id};
+}
+function upsertCamera(info,{render=true}={}){
+  const id=cleanId(info?.id||info?.streamID||info?.streamId||'');
+  if(!id.startsWith('cam_'))return null;
+  let c=cameras.find(x=>x.id===id);
+  if(!c){c={id,name:id,platform:'',browser:'',online:false,lastSeen:0,uuid:''};cameras.push(c);log(`พบกล้องใหม่อัตโนมัติ: ${id}`)}
+  if(info.label){const p=parseLabel(info.label,id);if(p.name)c.name=p.name;if(p.platform)c.platform=p.platform;if(p.browser)c.browser=p.browser}
+  if(info.name)c.name=String(info.name);
+  if(info.platform)c.platform=String(info.platform);
+  if(info.browser)c.browser=String(info.browser);
+  if(info.uuid)c.uuid=String(info.uuid);
+  c.online=info.online!==false;
+  c.lastSeen=Date.now();
+  saveCameras();
+  if(render)renderRegistry();
+  return c;
+}
+function markOffline(){
+  const now=Date.now();let changed=false;
+  for(const c of cameras){const on=!!c.lastSeen&&(now-c.lastSeen)<OFFLINE_MS;if(c.online!==on){c.online=on;changed=true}}
+  if(changed)renderRegistry();
+}
+function onlineCount(){return cameras.filter(c=>c.online).length}
 
 function receiverUrl({preview=false,streamId=null}={}){
+  const id=cleanId(streamId??activeId());
+  if(!id)return '';
   const u=new URL('receiver.html',location.href);
   u.searchParams.set('room',$('#room').value.trim());
-  u.searchParams.set('stream',cleanId(streamId??$('#streamId').value));
+  u.searchParams.set('stream',id);
   u.searchParams.set('bitrate',$('#bitrate').value);
   u.searchParams.set('buffer',$('#buffer').value);
   if($('#codec').value)u.searchParams.set('codec',$('#codec').value);
@@ -29,45 +70,49 @@ function receiverUrl({preview=false,streamId=null}={}){
   if(preview)u.searchParams.set('preview','1');
   return u.href;
 }
-
-function renderRegistry(selectedId=null){
-  const current=cleanId(selectedId||$('#streamId').value||cameras[0]?.id);
+function renderRegistry(preferred=null){
+  const previous=cleanId(preferred||activeId());
+  const ordered=[...cameras].sort((a,b)=>(Number(b.online)-Number(a.online))||(b.lastSeen-a.lastSeen)||a.name.localeCompare(b.name));
   const sel=$('#cameraSelect');sel.innerHTML='';
-  cameras.forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=`${c.name} • ${c.id}`;sel.appendChild(o)});
-  const chosen=cameras.some(c=>c.id===current)?current:cameras[0]?.id||'cam01';
-  sel.value=chosen;$('#streamId').value=chosen;
-
+  if(!ordered.length){const o=document.createElement('option');o.textContent='ยังไม่พบกล้องออนไลน์';o.value='';sel.appendChild(o);sel.disabled=true;$('#streamId').value=''}
+  else{
+    sel.disabled=false;
+    ordered.forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=`${c.online?'🟢':'⚫'} ${c.name}${c.platform?` • ${c.platform}`:''}`;sel.appendChild(o)});
+    let chosen=ordered.find(c=>c.id===previous)?.id||ordered.find(c=>c.online)?.id||ordered[0].id;
+    sel.value=chosen;$('#streamId').value=chosen;
+  }
   const chips=$('#cameraChips');chips.innerHTML='';
-  cameras.forEach(c=>{
-    const b=document.createElement('button');b.type='button';b.className='camera-chip'+(c.id===chosen?' active':'');b.dataset.id=c.id;b.innerHTML=`${c.name} <small>${c.id}</small>`;chips.appendChild(b)
-  });
-  renderMultiObs();
+  ordered.forEach(c=>{const b=document.createElement('button');b.type='button';b.className='camera-chip'+(c.id===activeId()?' active':'')+(c.online?' online':' offline');b.dataset.id=c.id;b.innerHTML=`<span class="presence-dot"></span>${c.name} <small>${c.platform||''}</small>`;chips.appendChild(b)});
+  $('#discoveryStatus').innerHTML=`<b>${onlineCount()} กล้องออนไลน์</b><span>${cameras.length} เครื่องที่รู้จัก</span>`;
+  updateObs();renderMultiObs();
 }
-
 function renderMultiObs(){
   const box=$('#multiObsList');if(!box)return;box.innerHTML='';
-  cameras.forEach(c=>{
+  const ordered=[...cameras].sort((a,b)=>Number(b.online)-Number(a.online)||a.name.localeCompare(b.name));
+  if(!ordered.length){box.innerHTML='<div class="mini">ยังไม่พบมือถือที่กำลังส่งภาพ</div>';return}
+  ordered.forEach(c=>{
     const row=document.createElement('div');row.className='multi-obs-row';
-    const name=document.createElement('div');name.textContent=c.name;
-    const id=document.createElement('div');id.className='mini';id.textContent=c.id;
+    const name=document.createElement('div');name.innerHTML=`${c.online?'🟢':'⚫'} ${c.name}`;
+    const id=document.createElement('div');id.className='mini';id.textContent=c.platform||c.id;
     const input=document.createElement('input');input.readOnly=true;input.value=receiverUrl({streamId:c.id});
     const copy=document.createElement('button');copy.type='button';copy.textContent='คัดลอก';copy.onclick=async()=>{await navigator.clipboard.writeText(input.value);copy.textContent='แล้ว';setTimeout(()=>copy.textContent='คัดลอก',900)};
     row.append(name,id,input,copy);box.appendChild(row)
   });
 }
-
 function updateObs(){
   $('#obsUrl').value=receiverUrl();
   $('#statNetworkMode').textContent=isSmart()?'SMART — ปรับอัตโนมัติ':'MANUAL — คง bitrate';
   $('#smartMinWrap').classList.toggle('hidden',!isSmart());
   $('#smartFallbackWrap').classList.toggle('hidden',!isSmart());
   $('#smartBadge').textContent=isSmart()?'SMART':'MANUAL';
-  renderMultiObs();saveRegistry();
 }
-function reloadPreview(){const f=$('#remoteFrame');if(f.src&&f.src!=='about:blank')f.src=receiverUrl({preview:true})}
+function reloadPreview(){const f=$('#remoteFrame');if(connectedStreamId&&f.src&&f.src!=='about:blank')f.src=receiverUrl({preview:true,streamId:connectedStreamId})}
 
-function setTelemetry(d){
-  if(d?.streamID && connectedStreamId && cleanId(d.streamID)!==cleanId(connectedStreamId))return;
+function setTelemetry(d,uuid=''){
+  const id=cleanId(d?.streamID||'');if(!id)return;
+  const c=upsertCamera({id,name:d?.cameraName,platform:d?.platform,browser:d?.browser,uuid,online:true},{render:false});
+  if(c)renderRegistry(id===activeId()?id:activeId());
+  if(id!==activeId())return;
   lastTelemetry=d;const req=d?.requested||{},act=d?.actual||{};const reqF=Number(req.fps||0),actF=Number(act.fps||0),meas=Number(d?.measuredFps||0);
   if(!smartFallbackActive&&d?.presetKey)smartOriginalPreset=d.presetKey;
   $('#telName').textContent=d?.cameraName||activeName();
@@ -80,70 +125,113 @@ function setTelemetry(d){
   const z=d?.zoom;if(z&&Number.isFinite(Number(z.min))&&Number.isFinite(Number(z.max))){const zr=$('#zoom');zr.min=String(z.min);zr.max=String(z.max);zr.step=String(z.step||.1);if(document.activeElement!==zr)zr.value=String(z.current||z.min);$('#zoomValue').value=`${Number(z.current||z.min).toFixed(2)}×`;if(z.speed&&$('#zoomSpeed'))$('#zoomSpeed').value=z.speed;$('#zoomCap').textContent=`${z.min}× – ${z.max}×`}
 }
 function extractData(e){return e?.detail?.data??e?.detail??e?.data}
+function extractUuid(e){return e?.detail?.uuid??e?.uuid??''}
+function collectListing(value,out=[],depth=0){
+  if(depth>5||value==null)return out;
+  if(Array.isArray(value)){value.forEach(v=>collectListing(v,out,depth+1));return out}
+  if(typeof value!=='object')return out;
+  const id=cleanId(value.streamID||value.streamId||value.streamid||value.stream||'');
+  if(id.startsWith('cam_'))out.push({id,label:value.label||value.name||'',uuid:value.uuid||value.UUID||'',online:true});
+  Object.entries(value).forEach(([k,v])=>{if(!['streamID','streamId','streamid','stream','label','name','uuid','UUID'].includes(k))collectListing(v,out,depth+1)});
+  return out;
+}
+function handleListing(e){const list=collectListing(e?.detail??e);let added=false;for(const item of list){upsertCamera(item,{render:false});added=true}if(added)renderRegistry()}
+
+async function startDiscovery(){
+  if(discoveryVdo)return;
+  $('#discoveryStatus').textContent='กำลังเชื่อม Room…';
+  await loadVDONinjaSDK(({index,total})=>log(`โหลด SDK สำหรับ Auto Discovery ${index}/${total}`));
+  const room=$('#room').value;
+  discoveryVdo=new VDONinjaSDK({autoRecover:true,autoRelay:true,salt:'vdo.ninja',label:'Remote Camera Control Center'});
+  discoveryVdo.addEventListener('connected',()=>{log('Auto Discovery signaling connected')});
+  discoveryVdo.addEventListener('listing',handleListing);discoveryVdo.addEventListener('peerListing',handleListing);discoveryVdo.addEventListener('room-peer-listing',handleListing);
+  discoveryVdo.addEventListener('peerConnected',e=>{const d=e.detail||{};if(d.streamID||d.streamId)upsertCamera({id:d.streamID||d.streamId,label:d.label,uuid:d.uuid,online:true});});
+  discoveryVdo.addEventListener('peerDisconnected',e=>{const uuid=extractUuid(e);const c=cameras.find(x=>x.uuid===uuid);if(c){c.online=false;renderRegistry()}});
+  discoveryVdo.addEventListener('peerLatency',e=>{const uuid=extractUuid(e);const c=cameras.find(x=>x.uuid===uuid);if(c?.id===activeId()){const v=e.detail?.latency??e.detail?.rtt??e.detail?.value;if(v!=null)$('#latency').textContent=`${Math.round(v)} ms`}});
+  discoveryVdo.addEventListener('dataReceived',e=>{const d=extractData(e);if(d?.type==='remote-camera-telemetry')setTelemetry(d,extractUuid(e));});
+  discoveryVdo.addEventListener('connectionRecovered',()=>log('Auto Discovery recovered'));
+  discoveryVdo.addEventListener('connectionFailed',()=>log('Auto Discovery connection failed'));
+  if(typeof discoveryVdo.autoConnect==='function'){
+    discoveryCtl=await discoveryVdo.autoConnect({room,filter:{prefix:'cam_'}});
+    log(`Auto Discovery พร้อมใน ${room}`);
+  }else{
+    await discoveryVdo.connect();await discoveryVdo.joinRoom({room});
+    log(`Auto Discovery fallback พร้อมใน ${room}`);
+  }
+  $('#discoveryStatus').innerHTML='<b>กำลังค้นหา…</b><span>มือถือจะปรากฏเองเมื่อเริ่มส่งภาพ</span>';
+  const ping=()=>{try{discoveryVdo?.sendData({type:'remote-camera-discover',ts:Date.now()})}catch{}};
+  ping();discoveryTimer=setInterval(ping,3000);
+}
+async function restartDiscovery(){
+  if(discoveryTimer){clearInterval(discoveryTimer);discoveryTimer=null}
+  try{await discoveryCtl?.stop?.()}catch{}
+  try{await discoveryVdo?.disconnect?.()}catch{}
+  discoveryCtl=null;discoveryVdo=null;
+  cameras.forEach(c=>{c.online=false;c.uuid=''});renderRegistry();
+  await startDiscovery();
+}
+
 function fmt(n,d=1,suffix=''){return Number.isFinite(Number(n))?`${Number(n).toFixed(d)}${suffix}`:'-'}
 function stateThai(s){return ({good:'ดี',fair:'พอใช้',weak:'อ่อน',critical:'วิกฤต',waiting:'กำลังวัด'})[s]||s||'-'}
 function handleReceiverStats(d){
   $('#smartState').textContent=stateThai(d.state);$('#smartTarget').textContent=d.currentBitrate?`${(d.currentBitrate/1000).toFixed(d.currentBitrate%1000?1:0)} Mbps`:'-';$('#smartActual').textContent=d.bitrateKbps?`${(d.bitrateKbps/1000).toFixed(2)} Mbps`:'-';$('#smartLoss').textContent=d.lossPct!=null?fmt(d.lossPct,2,'%'):'-';$('#smartRtt').textContent=d.rttMs!=null?fmt(d.rttMs,0,' ms'):'-';$('#smartJitter').textContent=d.jitterMs!=null?fmt(d.jitterMs,0,' ms'):'-';
   const badge=$('#smartBadge');badge.textContent=isSmart()?`SMART ${stateThai(d.state)}`:'MANUAL';badge.classList.toggle('ok',d.state==='good');
   if(d.action==='bitrate'&&d.reason&&isSmart())log(`Smart Network → ${(d.currentBitrate/1000).toFixed(1)} Mbps (${d.reason})`);
-  if(!isSmart()||!vdo||$('#smartFallback').value!=='1')return;
+  if(!isSmart()||!connectedStreamId||$('#smartFallback').value!=='1')return;
   const now=Date.now();
   if(d.fallbackRecommended&&!smartFallbackActive&&now-lastSmartQualityChange>10000){const current=lastTelemetry?.presetKey||smartOriginalPreset||'';if(current&&current!=='720_30'){smartOriginalPreset=smartOriginalPreset||current;smartFallbackActive=true;lastSmartQualityChange=now;send('quality',{value:'720_30',reason:'Smart Network: ฉุกเฉิน 720p30'});log('⚠ Smart Network: ลดกล้องเป็น 720p30 ชั่วคราว')}}
   if(d.restoreRecommended&&smartFallbackActive&&now-lastSmartQualityChange>18000){const restore=smartOriginalPreset||'1080_30';smartFallbackActive=false;lastSmartQualityChange=now;send('quality',{value:restore,reason:`Smart Network: คืน ${restore}`});log(`✓ Smart Network: คืนคุณภาพ ${restore}`)}
 }
+function resetTelemetry(){lastTelemetry=null;$('#telName').textContent=activeName();$('#telPlatform').textContent=activeCamera()?.platform||'-';$('#telRequested').textContent='รอข้อมูล…';['telActual','telMeasured','telCamera','telVerdict','telSmartProfile'].forEach(id=>$('#'+id).textContent='-')}
 
-async function connect(){
-  if(vdo)return;const room=$('#room').value.trim(),streamID=cleanId($('#streamId').value.trim());if(!room||!streamID)throw new Error('กรุณาระบุ Room และ Stream ID');
-  connectedStreamId=streamID;targetPeerUUID='';lastTelemetry=null;
-  log(`กำลังเชื่อม ${activeName()} (${streamID})…`);await loadVDONinjaSDK(({index,total})=>log(`โหลด SDK ${index}/${total}`));
-  vdo=new VDONinjaSDK({autoRecover:true,autoRelay:true,salt:'vdo.ninja'});
-  vdo.addEventListener('connected',()=>{$('#status').textContent='CONTROL CONNECTED';$('#status').classList.add('ok');log('Remote control signaling connected')});
-  vdo.addEventListener('peerConnected',e=>{const id=e.detail?.uuid;if(id){targetPeerUUID=id;log(`Control peer connected ${id.slice(0,8)}…`)}});
-  vdo.addEventListener('peerLatency',e=>{const v=e.detail?.latency??e.detail?.rtt??e.detail?.value;if(v!=null)$('#latency').textContent=`${Math.round(v)} ms`});
-  vdo.addEventListener('connectionRecovered',()=>log('Control recovered'));vdo.addEventListener('connectionFailed',()=>log('Control connection failed'));
-  vdo.addEventListener('dataReceived',e=>{const d=extractData(e);if(d?.type==='remote-camera-telemetry')setTelemetry(d)});
-  await vdo.connect();await vdo.joinRoom({room});await vdo.view(streamID,{audio:false,video:false,label:`control_${streamID}`});
-  $('#remoteFrame').src=receiverUrl({preview:true,streamId:streamID});log(`เปิดภาพ ${streamID}: ${$('#bitrate').value} kbps / ${isSmart()?'Smart':'Manual'} / buffer ${$('#buffer').value} ms`);
+async function openSelected(){
+  const id=activeId();if(!id)throw new Error('ยังไม่พบกล้อง');
+  const c=activeCamera();if(c&&!c.online)log('กล้องนี้ขึ้น Offline — จะลองเปิดภาพจาก Stream ID ล่าสุด');
+  connectedStreamId=id;smartFallbackActive=false;smartOriginalPreset=null;resetTelemetry();
+  $('#remoteFrame').src=receiverUrl({preview:true,streamId:id});
+  $('#status').textContent='CONTROL ACTIVE';$('#status').classList.add('ok');
+  log(`เปิดภาพ ${activeName()} (${id}) • ${$('#bitrate').value} kbps • ${isSmart()?'Smart':'Manual'}`);
+  try{discoveryVdo?.sendData({type:'remote-camera-discover',targetStream:id,ts:Date.now()},{streamID:id,allowFallback:true})}catch{}
 }
-async function disconnect(){
-  const old=connectedStreamId;try{if(vdo){if(old)await vdo.stopViewing?.(old);await vdo.disconnect?.()}}catch{}
-  vdo=null;connectedStreamId='';targetPeerUUID='';$('#remoteFrame').src='about:blank';smartFallbackActive=false;smartOriginalPreset=null;lastTelemetry=null;
-  ['telName','telPlatform','telActual','telMeasured','telCamera','telVerdict','telSmartProfile'].forEach(id=>$('#'+id).textContent='-');$('#telRequested').textContent='รอข้อมูล…';
-  ['smartState','smartTarget','smartActual','smartLoss','smartRtt','smartJitter'].forEach(id=>$('#'+id).textContent='-');$('#smartBadge').textContent=isSmart()?'SMART':'MANUAL';$('#smartBadge').classList.remove('ok');$('#status').textContent='DISCONNECTED';$('#status').classList.remove('ok');$('#latency').textContent='HQ VIEW';log('Disconnected')
+function closeSelected(){
+  connectedStreamId='';$('#remoteFrame').src='about:blank';smartFallbackActive=false;smartOriginalPreset=null;
+  $('#status').textContent='รอเลือกกล้อง';$('#status').classList.remove('ok');$('#latency').textContent='HQ VIEW';
+  ['smartState','smartTarget','smartActual','smartLoss','smartRtt','smartJitter'].forEach(id=>$('#'+id).textContent='-');
+  log('ปิดภาพกล้องที่เลือก');
 }
 function send(command,extra={}){
-  if(!vdo||!connectedStreamId){log('ยังไม่ได้เชื่อมต่อ Remote Control');return}
-  const payload={type:'remote-camera',command,...extra,ts:Date.now(),targetStream:connectedStreamId};
+  const id=activeId();if(!discoveryVdo||!id){log('Auto Discovery ยังไม่พร้อมหรือยังไม่พบกล้อง');return}
+  const payload={type:'remote-camera',command,...extra,ts:Date.now(),targetStream:id};
+  const c=activeCamera();
   try{
-    // v0.8: เจาะจง stream เพื่อไม่ให้คำสั่ง Front/Rear/Zoom ไปโดนมือถือเครื่องอื่นใน Room เดียวกัน
-    if(targetPeerUUID)vdo.sendData(payload,targetPeerUUID);else vdo.sendData(payload,{streamID:connectedStreamId,allowFallback:true});
-    log(`ส่ง ${command} → ${connectedStreamId}`)
+    if(c?.uuid)discoveryVdo.sendData(payload,c.uuid);else discoveryVdo.sendData(payload,{streamID:id,allowFallback:true});
+    log(`ส่ง ${command} → ${id}`);
   }catch(e){log(`Send error: ${e.message}`)}
 }
-
-async function selectCamera(id,{autoConnect=false}={}){
-  id=cleanId(id);if(!id)return;if(vdo)await disconnect();$('#streamId').value=id;$('#cameraSelect').value=id;renderRegistry(id);updateObs();resetTelemetry();if(autoConnect)await connect()
+async function selectCamera(id,{open=false}={}){
+  id=cleanId(id);if(!id)return;
+  $('#streamId').value=id;$('#cameraSelect').value=id;renderRegistry(id);resetTelemetry();
+  if(connectedStreamId&&connectedStreamId!==id)closeSelected();
+  if(open)await openSelected();
+  try{discoveryVdo?.sendData({type:'remote-camera-discover',targetStream:id,ts:Date.now()},{streamID:id,allowFallback:true})}catch{}
 }
-function resetTelemetry(){lastTelemetry=null;$('#telName').textContent=activeName();$('#telPlatform').textContent='-';$('#telRequested').textContent='รอข้อมูล…';['telActual','telMeasured','telCamera','telVerdict','telSmartProfile'].forEach(id=>$('#'+id).textContent='-')}
-function addCamera(){const name=$('#newCameraName').value.trim(),id=cleanId($('#newCameraId').value);if(!id){log('กรุณาใส่ Stream ID จากมือถือ');return}const found=cameras.find(c=>c.id===id);if(found){found.name=name||found.name}else cameras.push({name:name||id,id});saveRegistry();$('#newCameraName').value='';$('#newCameraId').value='';renderRegistry(id);updateObs();log(`เพิ่มกล้อง ${name||id} (${id})`)}
-function removeActive(){if(cameras.length<=1){log('ต้องเหลือกล้องอย่างน้อย 1 รายการ');return}const id=cleanId($('#streamId').value);cameras=cameras.filter(c=>c.id!==id);saveRegistry();renderRegistry(cameras[0].id);updateObs();log(`ลบ ${id} ออกจากรายการ Control Center (ไม่กระทบมือถือ)`) }
 
-loadRegistry();renderRegistry();updateObs();resetTelemetry();
-['bitrate','buffer','codec','networkMode','smartMin','smartFallback'].forEach(id=>$('#'+id).addEventListener('change',()=>{updateObs();reloadPreview()}));
-$('#room').addEventListener('input',()=>{updateObs()});
-$('#streamId').addEventListener('change',()=>{const id=cleanId($('#streamId').value);$('#streamId').value=id;renderRegistry(id);updateObs();resetTelemetry()});
-$('#cameraSelect').addEventListener('change',e=>selectCamera(e.target.value).catch(x=>log(`Switch control error: ${x.message}`)));
-$('#cameraChips').addEventListener('click',e=>{const b=e.target.closest('[data-id]');if(b)selectCamera(b.dataset.id).catch(x=>log(`Switch control error: ${x.message}`))});
-$('#addCamera').onclick=addCamera;
-// double click selected chip to remove intentionally, avoids accidental small delete buttons on mobile
-$('#cameraChips').addEventListener('dblclick',e=>{const b=e.target.closest('[data-id]');if(b&&b.dataset.id===cleanId($('#streamId').value))removeActive()});
+loadCameras();$('#room').value=systemRoom();renderRegistry();updateObs();resetTelemetry();
+['bitrate','buffer','codec','networkMode','smartMin','smartFallback'].forEach(id=>$('#'+id).addEventListener('change',()=>{updateObs();renderMultiObs();reloadPreview()}));
+$('#cameraSelect').addEventListener('change',e=>selectCamera(e.target.value).catch(x=>log(`Select error: ${x.message}`)));
+$('#cameraChips').addEventListener('click',e=>{const b=e.target.closest('[data-id]');if(b)selectCamera(b.dataset.id).catch(x=>log(`Select error: ${x.message}`))});
+$('#refreshDiscovery').onclick=()=>restartDiscovery().catch(e=>log(`Discovery restart error: ${e.message}`));
+$('#forgetOffline').onclick=()=>{cameras=cameras.filter(c=>c.online);saveCameras();renderRegistry();log('ล้างรายการ Offline แล้ว')};
 window.addEventListener('message',e=>{if(e.source!==$('#remoteFrame').contentWindow)return;const d=e.data;if(d?.type==='remote-camera-receiver-stats')handleReceiverStats(d)});
-
-$('#connect').onclick=()=>connect().catch(e=>{log(`Connect error: ${e.message}`);vdo=null;connectedStreamId=''});$('#disconnect').onclick=()=>disconnect();$('#front').onclick=()=>send('front');$('#rear').onclick=()=>send('rear');
+$('#connect').onclick=()=>openSelected().catch(e=>log(`Open error: ${e.message}`));$('#disconnect').onclick=closeSelected;
+$('#front').onclick=()=>send('front');$('#rear').onclick=()=>send('rear');
 let zoomSendTimer=null;function zoomSpeed(){return $('#zoomSpeed')?.value||'normal'}
 $('#zoom').oninput=e=>{const v=Number(e.target.value);$('#zoomValue').value=`${v.toFixed(2)}×`;clearTimeout(zoomSendTimer);zoomSendTimer=setTimeout(()=>send('zoomTarget',{value:v,speed:zoomSpeed()}),35)};
 $('#zoomSpeed').onchange=()=>send('zoomTarget',{value:Number($('#zoom').value),speed:zoomSpeed()});
 function bindRemoteHoldZoom(btn,dir){const start=e=>{e.preventDefault();send('zoomDrive',{direction:dir,speed:zoomSpeed()})};const stop=e=>{if(e)e.preventDefault();send('zoomStop',{speed:zoomSpeed()})};btn.addEventListener('pointerdown',start);btn.addEventListener('pointerup',stop);btn.addEventListener('pointercancel',stop);btn.addEventListener('pointerleave',e=>{if(e.buttons)stop(e)});btn.addEventListener('contextmenu',e=>e.preventDefault())}
 bindRemoteHoldZoom($('#zoomOut'),-1);bindRemoteHoldZoom($('#zoomIn'),1);
-$('#copy').onclick=async()=>{await navigator.clipboard.writeText($('#obsUrl').value);$('#copy').textContent='คัดลอกแล้ว';setTimeout(()=>$('#copy').textContent='คัดลอก',1200)};
-log('v0.8 พร้อม — Manual เป็นค่าเริ่มต้น, หลายมือถือ และ Remote Control เจาะจง Stream ID');
+$('#copy').onclick=async()=>{if(!$('#obsUrl').value)return;await navigator.clipboard.writeText($('#obsUrl').value);$('#copy').textContent='คัดลอกแล้ว';setTimeout(()=>$('#copy').textContent='คัดลอก',1200)};
+setInterval(markOffline,2000);
+window.addEventListener('beforeunload',()=>{try{discoveryCtl?.stop?.()}catch{};try{discoveryVdo?.disconnect?.()}catch{}});
+startDiscovery().catch(e=>{log(`Auto Discovery error: ${e.message}`);$('#discoveryStatus').innerHTML='<b>เชื่อมไม่สำเร็จ</b><span>กด “ค้นหากล้องใหม่” เพื่อลองอีกครั้ง</span>'});
+log(`v0.9 พร้อม — Auto Room ${systemRoom()} / Auto Discovery / ไม่ต้องกรอก Stream ID`);

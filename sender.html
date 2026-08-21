@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#08131e">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=080">
+  <link rel="stylesheet" href="styles.css?v=090">
   <title>Sender • Remote Camera</title>
 </head>
 <body>
 <main class="wrap">
   <div class="topbar">
-    <div class="brand">📱 Remote Camera <span class="version">v0.8</span></div>
+    <div class="brand">📱 Remote Camera <span class="version">v0.9</span></div>
     <div style="display:flex;gap:8px;align-items:center"><span id="platformBadge" class="badge">ตรวจอุปกรณ์…</span><a class="badge" href="index.html">หน้าหลัก</a></div>
   </div>
 
@@ -45,14 +45,24 @@
 
       <div class="spacer"></div>
       <div class="card">
-        <div class="section-title">ตัวตนกล้องเครื่องนี้</div>
-        <div class="row3">
-          <div><label>ชื่อกล้อง</label><input id="cameraName" placeholder="เช่น กล้องหน้าเวที"></div>
-          <div><label>Room</label><input id="room" value="remote-cam-test"></div>
-          <div><label>Stream ID <span class="mini">(ห้ามซ้ำกับเครื่องอื่น)</span></label><div class="copybox"><input id="streamId"><button id="newStreamId" type="button">ID ใหม่</button></div></div>
+        <div class="section-title">ตัวตนกล้องอัตโนมัติ</div>
+        <div class="row">
+          <div><label>ชื่อกล้อง <span class="mini">(แก้ได้ถ้าต้องการ)</span></label><input id="cameraName" placeholder="เช่น กล้องหน้าเวที"></div>
+          <div><label>สถานะ</label><div class="identity-auto">ระบบจะค้นพบกล้องเครื่องนี้อัตโนมัติใน Control Center</div></div>
         </div>
+        <input id="room" type="hidden">
+        <input id="streamId" type="hidden">
+        <details class="advanced">
+          <summary>ข้อมูลระบบ / Device ID</summary>
+          <div class="spacer"></div>
+          <div class="row">
+            <div><label>Room อัตโนมัติ</label><input id="roomView" readonly></div>
+            <div><label>Device / Stream ID อัตโนมัติ</label><input id="streamIdView" readonly></div>
+          </div>
+          <div class="spacer"></div><button id="newStreamId" class="ghost" type="button">สร้าง Device ID ใหม่</button>
+        </details>
         <div class="spacer"></div>
-        <div class="notice"><b>หลายมือถือ:</b> ใช้ Room เดียวกันได้ทั้ง iOS และ Android แต่แต่ละเครื่องต้องมี Stream ID คนละค่า ระบบจะจำชื่อ/Room/Stream ID ของเครื่องนี้ไว้ในเบราว์เซอร์</div>
+        <div class="notice"><b>ไม่ต้องตั้งค่าเอง:</b> iPhone และ Android ทุกเครื่องที่เปิด Sender จากเว็บไซต์นี้จะใช้ Room เดียวกัน และแต่ละเครื่องมี Device ID ถาวรของตัวเอง Control Center จะพบเครื่องที่ออนไลน์โดยอัตโนมัติ</div>
       </div>
 
       <div class="spacer"></div>
@@ -80,7 +90,7 @@
             <div><label>&nbsp;</label><button id="applyDeviceBtn" class="ghost" type="button">ใช้กล้องที่เลือก</button></div>
           </div>
           <div class="spacer"></div>
-          <div class="notice"><b>Android:</b> รายการของเบราว์เซอร์กับรายการในเว็บเป็นคนละชั้นกัน v0.8 จึงไม่สลับกล้องทันทีเมื่อแตะรายการนี้ ต้องกด “ใช้กล้องที่เลือก” เอง เพื่อลดหน้าต่างเลือกกล้องเด้งซ้ำ</div>
+          <div class="notice"><b>Android:</b> รายการของเบราว์เซอร์กับรายการในเว็บเป็นคนละชั้นกัน v0.9 จึงไม่สลับกล้องทันทีเมื่อแตะรายการนี้ ต้องกด “ใช้กล้องที่เลือก” เอง เพื่อลดหน้าต่างเลือกกล้องเด้งซ้ำ</div>
         </details>
       </div>
     </section>
@@ -105,12 +115,12 @@
           <div>Smart profile</div><div id="statSmartProfile">ปกติ</div>
         </div>
         <div class="spacer"></div>
-        <div class="notice"><b>v0.8 Android camera fix:</b> ขอสิทธิ์กล้องเพียง 1 ครั้งต่อการสั่งเปิด/สลับหนึ่งครั้ง ไม่ลอง Exact แล้วขอซ้ำอัตโนมัติ และไม่สลับกล้องจาก dropdown จนกว่าจะกดปุ่มยืนยัน</div>
+        <div class="notice"><b>Android camera flow:</b> ขอสิทธิ์กล้องเพียง 1 ครั้งต่อการสั่งเปิด/สลับหนึ่งครั้ง ไม่ลอง Exact แล้วขอซ้ำอัตโนมัติ และไม่สลับกล้องจาก dropdown จนกว่าจะกดปุ่มยืนยัน</div>
       </div>
       <div class="spacer"></div>
       <div class="card"><div class="section-title">Log</div><div id="log" class="log"></div></div>
     </aside>
   </div>
 </main>
-<script src="sdk-loader.js?v=080"></script><script src="sender.js?v=080"></script>
+<script src="sdk-loader.js?v=090"></script><script src="sender.js?v=090"></script>
 </body></html>
