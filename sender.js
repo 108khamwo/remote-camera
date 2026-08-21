@@ -7,6 +7,86 @@ let measuredCameraFps=0, frameMeterGeneration=0, telemetryTimer=null;
 let smartProfile='ปกติ';
 const video=$('#cameraVideo');
 
+// Smooth Zoom: Safari/PWA does not expose AVFoundation's native zoom ramp,
+// so we emulate a camera-like ramp by applying many small hardware-zoom steps.
+let zoomState={min:1,max:1,step:.1,current:1,target:1,drive:0,velocity:0,coasting:false,applying:false,timer:null,lastTick:0};
+const ZOOM_SPEEDS={slow:.10,normal:.20,fast:.34}; // fraction of the available zoom range / second
+function zoomSpeedKey(){return $('#zoomSpeed')?.value||'normal'}
+function zoomSpeedRatio(){return ZOOM_SPEEDS[zoomSpeedKey()]||ZOOM_SPEEDS.normal}
+function clamp(v,min,max){return Math.max(min,Math.min(max,v))}
+function quantizeZoom(v){
+  const {min,max,step}=zoomState; const st=Number(step)||.1;
+  const n=min+Math.round((clamp(v,min,max)-min)/st)*st;
+  return Number(clamp(n,min,max).toFixed(4));
+}
+function updateZoomUi(v=zoomState.current){
+  const z=$('#zoomRange'); if(z&&!z.disabled)z.value=String(v);
+  const info=$('#zoomInfo'); if(info)info.textContent=`Zoom ${zoomState.min} – ${zoomState.max} • ตอนนี้ ${Number(v).toFixed(2)}× • ${zoomSpeedKey()==='slow'?'ช้า':zoomSpeedKey()==='fast'?'เร็ว':'ปกติ'}`;
+}
+async function applyZoomHardware(v){
+  const t=cameraStream?.getVideoTracks?.()[0];
+  if(!t?.applyConstraints || zoomState.applying)return;
+  const caps=t.getCapabilities?.(); if(!caps?.zoom)return;
+  const next=quantizeZoom(v);
+  if(Math.abs(next-zoomState.current)<Math.max((zoomState.step||.1)*.45,.005))return;
+  zoomState.applying=true;
+  try{
+    await t.applyConstraints({advanced:[{zoom:next}]});
+    const actual=Number(t.getSettings?.().zoom);
+    zoomState.current=Number.isFinite(actual)?actual:next;
+    updateZoomUi();
+  }finally{zoomState.applying=false}
+}
+function ensureZoomLoop(){
+  if(zoomState.timer)return;
+  zoomState.lastTick=performance.now();
+  zoomState.timer=setInterval(async()=>{
+    const now=performance.now(); const dt=Math.min(.12,Math.max(.02,(now-zoomState.lastTick)/1000)); zoomState.lastTick=now;
+    const range=Math.max(.1,zoomState.max-zoomState.min);
+    const maxSpeed=range*zoomSpeedRatio();
+    const accel=maxSpeed*5.0;
+    let desiredVelocity=0;
+    if(zoomState.drive){
+      desiredVelocity=zoomState.drive*maxSpeed;
+    }else if(zoomState.coasting){
+      desiredVelocity=0;
+    }else{
+      const delta=zoomState.target-zoomState.current;
+      if(Math.abs(delta)>Math.max((zoomState.step||.1)*.55,.01)){
+        // proportional target tracking: naturally slows as it approaches the requested zoom
+        desiredVelocity=clamp(delta*3.2,-maxSpeed,maxSpeed);
+      }
+    }
+    const dv=clamp(desiredVelocity-zoomState.velocity,-accel*dt,accel*dt);
+    zoomState.velocity+=dv;
+    if(zoomState.coasting && Math.abs(zoomState.velocity)<maxSpeed*.08){
+      zoomState.velocity=0;zoomState.coasting=false;zoomState.target=zoomState.current;return;
+    }
+    if(!zoomState.drive && !zoomState.coasting && Math.abs(zoomState.target-zoomState.current)<=Math.max((zoomState.step||.1)*.55,.01) && Math.abs(zoomState.velocity)<maxSpeed*.08){
+      zoomState.velocity=0; zoomState.target=zoomState.current; return;
+    }
+    let next=zoomState.current+zoomState.velocity*dt;
+    if(!zoomState.drive && !zoomState.coasting){
+      const before=zoomState.target-zoomState.current, after=zoomState.target-next;
+      if(before!==0 && Math.sign(before)!==Math.sign(after)){next=zoomState.target;zoomState.velocity=0}
+    }
+    if(next<=zoomState.min || next>=zoomState.max){zoomState.velocity=0}
+    await applyZoomHardware(clamp(next,zoomState.min,zoomState.max));
+  },40); // ~25 updates/s; smooth without flooding iOS applyConstraints
+}
+function setSmoothZoomTarget(value,{speed}={}){
+  if(speed && $('#zoomSpeed'))$('#zoomSpeed').value=speed;
+  zoomState.drive=0;zoomState.coasting=false; zoomState.target=clamp(Number(value),zoomState.min,zoomState.max); ensureZoomLoop();
+}
+function setZoomDrive(direction,{speed}={}){
+  if(speed && $('#zoomSpeed'))$('#zoomSpeed').value=speed;
+  const dir=clamp(Number(direction)||0,-1,1);
+  if(dir){zoomState.drive=dir;zoomState.coasting=false;}
+  else{zoomState.drive=0;zoomState.coasting=true;zoomState.target=zoomState.current;}
+  ensureZoomLoop();
+}
+
+
 const PRESETS={
   '1080_30':{w:1920,h:1080,fps:30,hint:'motion',label:'1080p / 30'},
   '1080_60':{w:1920,h:1080,fps:60,hint:'motion',label:'1080p / สูงสุด 60'},
@@ -97,6 +177,7 @@ function telemetrySnapshot(){
     fpsCapability:fpsCapabilityText(t),
     publishing:!!isPublishing,
     presetKey:$('#quality').value,
+    zoom:{min:zoomState.min,max:zoomState.max,step:zoomState.step,current:zoomState.current,speed:zoomSpeedKey()},
     smartProfile
   };
 }
@@ -130,8 +211,15 @@ function updateCameraStatus(track){
 
 async function configureZoom(track){
   const caps=track.getCapabilities?track.getCapabilities():{};const z=$('#zoomRange');
-  if(caps.zoom){z.disabled=false;z.min=caps.zoom.min;z.max=caps.zoom.max;z.step=caps.zoom.step||0.1;z.value=track.getSettings().zoom||caps.zoom.min;$('#zoomInfo').textContent=`Zoom ${caps.zoom.min} – ${caps.zoom.max}`;}
-  else{z.disabled=true;z.min=1;z.max=1;z.value=1;$('#zoomInfo').textContent='Safari/อุปกรณ์นี้ไม่เปิด Zoom API ให้เว็บ';}
+  if(caps.zoom){
+    const current=Number(track.getSettings().zoom||caps.zoom.min);
+    z.disabled=false;z.min=caps.zoom.min;z.max=caps.zoom.max;z.step=caps.zoom.step||0.1;z.value=current;
+    zoomState.min=Number(caps.zoom.min);zoomState.max=Number(caps.zoom.max);zoomState.step=Number(caps.zoom.step||0.1);zoomState.current=current;zoomState.target=current;zoomState.drive=0;zoomState.velocity=0;zoomState.coasting=false;
+    updateZoomUi(current);ensureZoomLoop();
+  }else{
+    z.disabled=true;z.min=1;z.max=1;z.value=1;zoomState={...zoomState,min:1,max:1,step:.1,current:1,target:1,drive:0,velocity:0,coasting:false};
+    $('#zoomInfo').textContent='Safari/อุปกรณ์นี้ไม่เปิด Zoom API ให้เว็บ';
+  }
 }
 
 async function openCamera({facing=currentFacing,deviceId=''}={}){
@@ -183,10 +271,8 @@ async function openCamera({facing=currentFacing,deviceId=''}={}){
 }
 
 async function setZoom(value){
-  const t=cameraStream?.getVideoTracks()[0];if(!t?.applyConstraints)return;
-  const caps=t.getCapabilities?.();if(!caps?.zoom)return;
-  const v=Math.max(caps.zoom.min,Math.min(caps.zoom.max,Number(value)));
-  await t.applyConstraints({advanced:[{zoom:v}]});$('#zoomRange').value=v;log(`Zoom ${v}`)
+  // Backward-compatible command: a requested value becomes a smooth target, not an instant jump.
+  setSmoothZoomTarget(value);
 }
 
 async function setQualityPreset(value,reason='Remote'){
@@ -239,7 +325,9 @@ async function handleRemote(d){
   try{
     if(d.command==='front')await openCamera({facing:'user'});
     if(d.command==='rear')await openCamera({facing:'environment'});
-    if(d.command==='zoom')await setZoom(d.value);
+    if(d.command==='zoom'||d.command==='zoomTarget')setSmoothZoomTarget(d.value,{speed:d.speed});
+    if(d.command==='zoomDrive')setZoomDrive(d.direction,{speed:d.speed});
+    if(d.command==='zoomStop')setZoomDrive(0,{speed:d.speed});
     if(d.command==='device'&&d.deviceId)await openCamera({deviceId:d.deviceId});
     if(d.command==='quality'&&d.value)await setQualityPreset(d.value,d.reason||'Remote quality');
   }catch(e){log(`Remote error: ${e.message}`)}
@@ -249,6 +337,8 @@ async function stopAll(){
   try{if(vdo){await vdo.stopPublishing?.();await vdo.disconnect?.()}}catch{}
   isPublishing=false;peerIds.clear();updatePeerCount();
   if(telemetryTimer){clearInterval(telemetryTimer);telemetryTimer=null}
+  if(zoomState.timer){clearInterval(zoomState.timer);zoomState.timer=null}
+  zoomState.drive=0;zoomState.velocity=0;zoomState.coasting=false;
   frameMeterGeneration++;measuredCameraFps=0;
   if(cameraStream){cameraStream.getTracks().forEach(t=>t.stop());cameraStream=null}
   if(audioStream){audioStream.getTracks().forEach(t=>t.stop());audioStream=null}
@@ -263,16 +353,22 @@ $('#stopBtn').onclick=()=>stopAll();
 $('#frontBtn').onclick=()=>openCamera({facing:'user'}).catch(e=>log(`Switch error: ${e.message}`));
 $('#rearBtn').onclick=()=>openCamera({facing:'environment'}).catch(e=>log(`Switch error: ${e.message}`));
 $('#deviceSelect').onchange=e=>{if(e.target.value)openCamera({deviceId:e.target.value}).catch(x=>log(`Device error: ${x.message}`))};
-$('#zoomRange').oninput=e=>setZoom(e.target.value).catch(x=>log(`Zoom error: ${x.message}`));
-$('#zoomOutBtn').onclick=()=>{const z=$('#zoomRange');if(!z.disabled)setZoom(Number(z.value)-Number(z.step||.1))};
-$('#zoomInBtn').onclick=()=>{const z=$('#zoomRange');if(!z.disabled)setZoom(Number(z.value)+Number(z.step||.1))};
+$('#zoomRange').oninput=e=>setSmoothZoomTarget(e.target.value);
+$('#zoomSpeed').onchange=()=>{updateZoomUi();sendTelemetry()};
+function bindHoldZoom(btn,dir){
+  const start=e=>{e.preventDefault();if($('#zoomRange').disabled)return;setZoomDrive(dir);};
+  const stop=e=>{if(e)e.preventDefault();setZoomDrive(0);};
+  btn.addEventListener('pointerdown',start);btn.addEventListener('pointerup',stop);btn.addEventListener('pointercancel',stop);btn.addEventListener('pointerleave',e=>{if(e.buttons)stop(e)});
+  btn.addEventListener('contextmenu',e=>e.preventDefault());
+}
+bindHoldZoom($('#zoomOutBtn'),-1);bindHoldZoom($('#zoomInBtn'),1);
 $('#quality').onchange=async()=>{
   smartProfile='Manual';$('#statSmartProfile').textContent=smartProfile;
   log(`เปลี่ยนคุณภาพเป็น ${q().label} / hint=${q().hint}`);
   if(cameraStream){try{await openCamera({facing:currentFacing,deviceId:$('#deviceSelect').value})}catch(e){log(`Quality switch error: ${e.message}`)}}
 };
 window.addEventListener('beforeunload',()=>stopAll());
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=060').catch(()=>{});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=070').catch(()=>{});
 $('#statHint').textContent=q().hint;
 $('#statSmartProfile').textContent=smartProfile;
-log('v0.6 พร้อมใช้งาน — รองรับ Smart Network และ Remote quality fallback');
+log('v0.7 พร้อมใช้งาน — Smooth Zoom แบบ ramp, กดค้าง และปรับความเร็วได้');

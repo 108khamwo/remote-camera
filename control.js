@@ -44,6 +44,14 @@ function setTelemetry(d){
   } else if(meas){ verdict=`ฝั่งกล้อง ~${meas.toFixed(1)} fps`; }
   $('#telVerdict').textContent=verdict;
   $('#telSmartProfile').textContent=d?.smartProfile||'ปกติ';
+  const z=d?.zoom;
+  if(z&&Number.isFinite(Number(z.min))&&Number.isFinite(Number(z.max))){
+    const zr=$('#zoom'); zr.min=String(z.min);zr.max=String(z.max);zr.step=String(z.step||.1);
+    if(document.activeElement!==zr)zr.value=String(z.current||z.min);
+    $('#zoomValue').value=`${Number(z.current||z.min).toFixed(2)}×`;
+    if(z.speed&&$('#zoomSpeed'))$('#zoomSpeed').value=z.speed;
+    $('#zoomCap').textContent=`${z.min}× – ${z.max}×`;
+  }
 }
 function extractData(e){return e?.detail?.data??e?.detail??e?.data}
 function fmt(n,d=1,suffix=''){return Number.isFinite(Number(n))?`${Number(n).toFixed(d)}${suffix}`:'-'}
@@ -113,7 +121,19 @@ async function disconnect(){
 }
 function send(command,extra={}){if(!vdo){log('ยังไม่ได้เชื่อมต่อ Remote Control');return}const payload={type:'remote-camera',command,...extra,ts:Date.now()};try{vdo.sendData(payload);log(`ส่งคำสั่ง ${command}`)}catch(e){log(`Send error: ${e.message}`)}}
 $('#connect').onclick=()=>connect().catch(e=>{log(`Connect error: ${e.message}`);vdo=null});$('#disconnect').onclick=()=>disconnect();$('#front').onclick=()=>send('front');$('#rear').onclick=()=>send('rear');
-$('#zoom').oninput=e=>{$('#zoomValue').value=Number(e.target.value).toFixed(1);send('zoom',{value:Number(e.target.value)})};
-$('#zoomOut').onclick=()=>{const z=$('#zoom');z.value=Math.max(+z.min,+z.value-.2);z.dispatchEvent(new Event('input'))};$('#zoomIn').onclick=()=>{const z=$('#zoom');z.value=Math.min(+z.max,+z.value+.2);z.dispatchEvent(new Event('input'))};
+let zoomSendTimer=null;
+function zoomSpeed(){return $('#zoomSpeed')?.value||'normal'}
+$('#zoom').oninput=e=>{
+  const v=Number(e.target.value);$('#zoomValue').value=`${v.toFixed(2)}×`;
+  clearTimeout(zoomSendTimer);zoomSendTimer=setTimeout(()=>send('zoomTarget',{value:v,speed:zoomSpeed()}),35);
+};
+$('#zoomSpeed').onchange=()=>send('zoomTarget',{value:Number($('#zoom').value),speed:zoomSpeed()});
+function bindRemoteHoldZoom(btn,dir){
+  const start=e=>{e.preventDefault();send('zoomDrive',{direction:dir,speed:zoomSpeed()})};
+  const stop=e=>{if(e)e.preventDefault();send('zoomStop',{speed:zoomSpeed()})};
+  btn.addEventListener('pointerdown',start);btn.addEventListener('pointerup',stop);btn.addEventListener('pointercancel',stop);
+  btn.addEventListener('pointerleave',e=>{if(e.buttons)stop(e)});btn.addEventListener('contextmenu',e=>e.preventDefault());
+}
+bindRemoteHoldZoom($('#zoomOut'),-1);bindRemoteHoldZoom($('#zoomIn'),1);
 $('#copy').onclick=async()=>{await navigator.clipboard.writeText($('#obsUrl').value);$('#copy').textContent='คัดลอกแล้ว';setTimeout(()=>$('#copy').textContent='คัดลอก',1200)};
-log('v0.6 พร้อม — เพิ่ม Smart Network ลด/เพิ่ม bitrate ตาม packet loss, RTT และ jitter');
+log('v0.7 พร้อม — Smooth Zoom แบบกดค้าง/ลากสไลเดอร์ พร้อมปรับความเร็ว');

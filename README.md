@@ -1,8 +1,8 @@
-# Remote Camera PWA v0.6 — Smart Network
+# Remote Camera PWA v0.7 — Smart Network
 
 ต้นแบบส่งภาพ iPhone → WebRTC → OBS พร้อม Control Center และโหมดอัจฉริยะสำหรับ 4G/5G อ่อน
 
-## สิ่งใหม่ใน v0.6
+## สิ่งใหม่ใน v0.7
 
 - เพิ่ม **Smart Network** ที่ `receiver.html` โดยตรง จึงทำงานกับ OBS Browser Source ได้แม้ไม่ได้เปิด Control Center ค้างไว้
 - เริ่มจาก bitrate สูงสุดที่กำหนด เช่น 8 Mbps แล้วตรวจ WebRTC stats ประมาณทุก 1.25 วินาที
@@ -46,3 +46,12 @@ Smart Network จะลดประมาณ 8 → 6.5 → 5 → 4 → 3.2 → 2
 - Capture fallback 720p30 ต้องมี Control Center เชื่อมอยู่ เพราะ Control Center เป็นตัวส่งคำสั่งกลับไป iPhone
 - WebRTC มี congestion control ของตัวเองอยู่แล้ว โหมด Smart นี้เป็นชั้นควบคุม target bitrate เพิ่มเติมเพื่อให้ตอบสนองกับเครือข่ายมือถือที่แกว่งได้ชัดเจนขึ้น
 - Safari/PWA จากการทดสอบปัจจุบัน: 1920×1080 ได้สูงสุดประมาณ 30 fps ขณะที่ 1280×720 สามารถได้ถึง 60 fps บนอุปกรณ์ที่ทดสอบ
+
+
+## v0.7 Smooth Zoom
+- ซูมแบบค่อย ๆ ramp แทนการกระโดดทีละ 0.1/0.2x
+- ปุ่ม − / + รองรับกดค้างเพื่อซูมต่อเนื่อง
+- เลือกความเร็ว ช้า / ปกติ / เร็ว
+- ใช้ hardware zoom constraint ของกล้องเมื่อ Safari เปิด capability ให้
+- Control Center อ่าน min/max/current zoom จาก telemetry ของ iPhone
+- ข้อจำกัด PWA: จุดที่ iPhone/Safari สลับ physical lens อาจยังมี jump ตามระบบ; Native iOS ภายหลังใช้ AVCaptureDevice ramp ได้เนียนกว่านี้
