@@ -2,6 +2,7 @@ const $=s=>document.querySelector(s); const logEl=$('#log');
 function log(m){const t=new Date().toLocaleTimeString();logEl.textContent+=`[${t}] ${m}\n`;logEl.scrollTop=logEl.scrollHeight}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 let cameraStream=null,audioStream=null,outStream=null,vdo=null,messageVdo=null,messageReady=false,messageViewPending=false,messageRetryTimer=null,currentFacing='environment',isPublishing=false,lastRemoteTs=0;
+let micMuted=false;
 const processedRemoteCommands=new Map();
 let explicitDeviceId='', openingCamera=false;
 let peerIds=new Set();
@@ -12,6 +13,27 @@ const senderMessages=[];
 const processedMessageIds=new Map();const pendingSenderMessageAcks=new Map();let senderMessageSeq=0;
 function nextSenderMessageId(){senderMessageSeq=(senderMessageSeq+1)%100000;return `smsg_${Date.now().toString(36)}_${senderMessageSeq.toString(36)}`}
 const video=$('#cameraVideo');
+function updateMicUi(){
+  const btn=$('#micToggleBtn'),on=$('#micOnIcon'),off=$('#micOffIcon');
+  if(btn){
+    btn.classList.toggle('is-muted',micMuted);
+    btn.setAttribute('aria-label',micMuted?'เปิดเสียงไมโครโฟน':'ปิดเสียงไมโครโฟน');
+    btn.title=micMuted?'เปิดเสียงไมโครโฟน':'ปิดเสียงไมโครโฟน';
+  }
+  if(on)on.hidden=micMuted;
+  if(off)off.hidden=!micMuted;
+  const live=audioStream?.getAudioTracks?.()[0];
+  if(live)live.enabled=!micMuted;
+  const stat=$('#statMic');
+  if(stat)stat.textContent=audioStream?(micMuted?'MUTED':'ON'):(micMuted?'ปิดเสียง':'-');
+}
+function setMicMuted(muted,{silent=false}={}){
+  micMuted=!!muted;
+  audioStream?.getAudioTracks?.().forEach(t=>{t.enabled=!micMuted});
+  updateMicUi();
+  if(!silent)log(micMuted?'ปิดเสียงไมโครโฟน':'เปิดเสียงไมโครโฟน');
+  if(isPublishing)setTimeout(sendTelemetry,40);
+}
 function updateSimpleStatus(){
   const el=$('#senderSimpleStatus');
   const sendBtn=$('#sendToggleBtn'), sendLabel=$('#sendToggleLabel'), sendIcon=$('#sendToggleIcon');
@@ -240,9 +262,11 @@ async function listDevices(){
 }
 
 async function ensureMic(){
-  if(audioStream)return;
+  if(audioStream){updateMicUi();return}
   audioStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false},video:false});
-  $('#statMic').textContent='ON';log('เปิดไมโครโฟนแล้ว');
+  audioStream.getAudioTracks().forEach(t=>{t.enabled=!micMuted});
+  updateMicUi();
+  log(micMuted?'เปิดไมโครโฟนแล้ว (ปิดเสียงอยู่)':'เปิดไมโครโฟนแล้ว');
 }
 
 async function getCamera(constraints){
@@ -343,7 +367,8 @@ function telemetrySnapshot(){
     publishing:!!isPublishing,
     presetKey:$('#quality').value,
     zoom:{min:zoomState.min,max:zoomState.max,step:zoomState.step,current:zoomState.current,speed:zoomSpeedKey()},
-    smartProfile
+    smartProfile,
+    mic:{muted:!!micMuted,active:!!audioStream?.getAudioTracks?.().some(t=>t.readyState==='live')}
   };
 }
 
@@ -683,6 +708,7 @@ async function stopAll(){
   frameMeterGeneration++;measuredCameraFps=0;
   if(cameraStream){cameraStream.getTracks().forEach(t=>t.stop());cameraStream=null}
   if(audioStream){audioStream.getTracks().forEach(t=>t.stop());audioStream=null}
+  updateMicUi();
   outStream=null;
   video.srcObject=null;
   setScreenRest(false);releaseWakeLock();
@@ -739,6 +765,7 @@ function openSheet(id){const el=$(id);if(el){el.hidden=false;document.body.style
 function closeSheets(){['#settingsSheet','#messageSheet'].forEach(id=>{const el=$(id);if(el)el.hidden=true});document.body.style.overflow=''}
 $('#settingsOpenBtn').onclick=()=>openSheet('#settingsSheet');
 $('#messageOpenBtn').onclick=()=>openSheet('#messageSheet');
+$('#micToggleBtn').onclick=()=>setMicMuted(!micMuted);
 document.querySelectorAll('[data-close-settings],[data-close-message]').forEach(el=>el.addEventListener('click',closeSheets));
 $('#screenRestBtn').onclick=()=>setScreenRest(true);
 $('#screenRestOverlay').addEventListener('click',()=>setScreenRest(false));
@@ -748,9 +775,9 @@ $('#senderMessageInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.pr
 document.querySelectorAll('[data-quick-reply]').forEach(btn=>btn.addEventListener('click',()=>{if(sendSenderMessage(btn.dataset.quickReply||''))closeSheets()}));
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&isPublishing)requestWakeLock()});
 window.addEventListener('beforeunload',()=>stopAll());
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=01110').catch(()=>{});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=01112').catch(()=>{});
 $('#statHint').textContent=q().hint;
 $('#statSmartProfile').textContent=smartProfile;
-initIdentity();updateSimpleStatus();
+initIdentity();updateSimpleStatus();updateMicUi();
 $('#newStreamId').onclick=generateNewStreamId;
-log(`v0.11.10 พร้อมใช้งาน — Control Data Hub — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
+log(`v0.11.12 พร้อมใช้งาน — Control Data Hub — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);

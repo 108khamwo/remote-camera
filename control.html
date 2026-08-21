@@ -1,17 +1,21 @@
 <!doctype html>
-<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="styles.css?v=01110"><title>Control Center</title></head>
+<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="styles.css?v=01112"><title>Control Center</title></head>
 <body><main class="wrap compact-control">
-<div class="topbar"><div class="brand control-brand"><span class="ui-icon ui-icon-monitor" aria-hidden="true"></span><span>Control Center</span> <span class="version">v0.11.10</span></div><a class="badge" href="index.html">หน้าหลัก</a></div>
+<div class="topbar"><div class="brand control-brand"><span class="ui-icon ui-icon-monitor" aria-hidden="true"></span><span>Control Center</span> <span class="version">v0.11.12</span></div><a class="badge" href="index.html">หน้าหลัก</a></div>
 
 <div class="card camera-bar-card">
-  <div class="camera-select-row">
-    <div class="camera-select-main"><label for="cameraSelect">เลือกกล้อง</label><select id="cameraSelect"><option>กำลังค้นหา…</option></select></div>
-    <div><div class="section-title">กล้องออนไลน์</div><div id="discoveryStatus" class="mini">กำลังค้นหา…</div></div>
+  <div class="camera-picker-head">
+    <div>
+      <div class="section-title">เลือกกล้อง</div>
+      <div id="discoveryStatus" class="mini">กำลังค้นหา…</div>
+    </div>
+    <button id="refreshDiscovery" class="ghost camera-refresh" type="button" aria-label="รีเฟรชและค้นหากล้องใหม่"><span class="ui-icon ui-icon-refresh" aria-hidden="true"></span><span>รีเฟรช</span></button>
   </div>
   <div class="control-message-tools">
     <div id="cameraChips" class="camera-chips camera-chips-main"></div>
     <button id="controlMessageOpen" class="ghost control-message-open" type="button"><span class="ui-icon ui-icon-message" aria-hidden="true"></span><span>ข้อความ</span></button>
   </div>
+  <select id="cameraSelect" class="hidden" aria-hidden="true" tabindex="-1"><option>กำลังค้นหา…</option></select>
   <div id="controlMessagePanel" class="control-message-panel" hidden>
     <div class="control-message-compose">
       <input id="controlMessageInput" type="text" maxlength="300" placeholder="พิมพ์ข้อความถึงทุกกล้อง…">
@@ -24,7 +28,7 @@
   <details class="advanced compact-details">
     <summary>จัดการกล้อง</summary>
     <div class="spacer"></div>
-    <div class="row"><button id="refreshDiscovery" class="ghost">ค้นหาใหม่</button><button id="forgetOffline" class="ghost">ล้าง Offline</button></div>
+    <div class="row"><button id="forgetOffline" class="ghost">ล้าง Offline</button></div>
     <div class="spacer"></div><div class="mini">Room: <span id="roomText">-</span></div>
   </details>
 </div>
@@ -75,4 +79,4 @@
 </aside>
 </div></main>
 <div id="controlMessageToast" class="control-message-toast" hidden><strong id="controlMessageToastFrom">ข้อความจากกล้อง</strong><div id="controlMessageToastText"></div></div>
-<script src="sdk-loader.js?v=01110"></script><script src="control.js?v=01110"></script></body></html>
+<script src="sdk-loader.js?v=01112"></script><script src="control.js?v=01112"></script></body></html>
