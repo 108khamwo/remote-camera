@@ -1,68 +1,63 @@
 <!doctype html>
-<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="styles.css?v=097"><title>Control Center</title></head>
-<body><main class="wrap">
-<div class="topbar"><div class="brand">🖥️ Control Center <span class="version">v0.9.7</span></div><a class="badge" href="index.html">หน้าหลัก</a></div>
+<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="styles.css?v=098"><title>Control Center</title></head>
+<body><main class="wrap compact-control">
+<div class="topbar"><div class="brand">🖥️ Control Center <span class="version">v0.9.8</span></div><a class="badge" href="index.html">หน้าหลัก</a></div>
 
-<div class="card">
-  <div class="section-title">ค้นหากล้องอัตโนมัติ</div>
-  <div class="row3">
-    <div><label>กล้องที่กำลังควบคุม</label><select id="cameraSelect"><option>กำลังค้นหา…</option></select></div>
-    <div><label>สถานะการค้นหา</label><div id="discoveryStatus" class="discovery-box">กำลังเริ่มระบบ…</div></div>
-    <div><label>Room ของระบบ</label><input id="room" readonly></div>
-  </div>
-  <input id="streamId" type="hidden">
-  <div class="spacer"></div>
-  <div class="row">
-    <button id="refreshDiscovery" class="ghost">ค้นหากล้องใหม่</button>
-    <button id="forgetOffline" class="ghost">ล้างรายการ Offline</button>
-  </div>
-  <div class="spacer"></div>
-  <div id="cameraChips" class="camera-chips"></div>
-  <div class="spacer"></div>
-  <div class="notice"><b>อัตโนมัติ:</b> มือถือทุกเครื่องที่เปิด Sender จากเว็บไซต์นี้จะใช้ Room เดียวกันและสร้าง Device/Stream ID ของตัวเอง ระบบ Control Center จะพบกล้องที่ออนไลน์เอง ไม่ต้องกรอก Stream ID อีกต่อไป รองรับ iOS และ Android หลายเครื่องพร้อมกัน</div>
+<div class="card camera-bar-card">
+  <div class="camera-bar-head"><div><div class="section-title">กล้องออนไลน์</div><div id="discoveryStatus" class="mini">กำลังค้นหา…</div></div><div id="cameraChips" class="camera-chips"></div></div>
+  <select id="cameraSelect" class="hidden"><option>กำลังค้นหา…</option></select>
+  <input id="streamId" type="hidden"><input id="room" type="hidden">
+  <details class="advanced compact-details">
+    <summary>จัดการกล้อง</summary>
+    <div class="spacer"></div>
+    <div class="row"><button id="refreshDiscovery" class="ghost">ค้นหาใหม่</button><button id="forgetOffline" class="ghost">ล้าง Offline</button></div>
+    <div class="spacer"></div><div class="mini">Room: <span id="roomText">-</span></div>
+  </details>
 </div>
 
 <div class="spacer"></div>
 <div class="grid">
 <section>
-  <div class="card">
-    <div class="preview"><iframe id="remoteFrame" class="preview-frame" allow="autoplay; fullscreen" referrerpolicy="no-referrer"></iframe><div class="overlay"><div id="status" class="status">รอเลือกกล้อง</div><div style="display:flex;gap:6px"><div id="smartBadge" class="status">MANUAL</div><div id="latency" class="status">HQ VIEW</div></div></div></div>
-    <!-- v0.9.7: Remote camera commands are intentionally removed from the Control Center UI.
-         Discovery/telemetry still use the data channel, but camera switching/zoom is controlled locally on each phone. -->
+  <div class="card preview-card">
+    <div class="preview"><iframe id="remoteFrame" class="preview-frame" allow="autoplay; fullscreen" referrerpolicy="no-referrer"></iframe><div class="overlay"><div id="status" class="status">รอกล้องออนไลน์</div><div style="display:flex;gap:6px"><div id="smartBadge" class="status">MANUAL</div><div id="latency" class="status">HQ</div></div></div></div>
     <div class="hidden" aria-hidden="true">
-      <button id="front"></button><button id="rear"></button><button id="zoomOut"></button><button id="zoomIn"></button>
-      <div id="controlAck"></div>
-      <input id="zoom" type="range" min="1" max="8" step="0.1" value="1">
-      <input id="zoomValue" value="1.00×"><span id="zoomCap"></span>
-      <select id="zoomSpeed"><option value="normal" selected>normal</option></select>
+      <button id="front"></button><button id="rear"></button><button id="zoomOut"></button><button id="zoomIn"></button><div id="controlAck"></div>
+      <input id="zoom" type="range" min="1" max="8" step="0.1" value="1"><input id="zoomValue" value="1.00×"><span id="zoomCap"></span><select id="zoomSpeed"><option value="normal" selected>normal</option></select>
     </div>
-    <div class="notice" style="margin-top:10px"><b>ควบคุมกล้อง:</b> สลับหน้า/หลังและ Zoom จากหน้ามือถือโดยตรง เพื่อให้การตอบสนองเสถียรที่สุด ส่วน Control Center ใช้สำหรับเลือกดูหลายกล้อง ปรับเครือข่าย และสร้าง OBS URL</div>
   </div>
 
   <div class="spacer"></div>
   <div class="card">
-    <div class="section-title">เครือข่ายและภาพ</div>
+    <div class="section-title">เครือข่าย</div>
     <div class="row3">
-      <div><label>โหมดเครือข่าย</label><select id="networkMode"><option value="manual" selected>Manual — ค่าเริ่มต้น</option><option value="smart">Smart Network — เน็ตอ่อน</option></select></div>
-      <div><label>Bitrate สูงสุด</label><select id="bitrate"><option value="4000">4 Mbps</option><option value="6000">6 Mbps</option><option value="8000" selected>8 Mbps — แนะนำ 1080p30</option><option value="10000">10 Mbps</option><option value="12000">12 Mbps</option><option value="16000">16 Mbps — เน็ตแรง</option></select></div>
-      <div><label>Buffer ความลื่น</label><select id="buffer"><option value="0">0 ms</option><option value="100">100 ms</option><option value="200" selected>200 ms — แนะนำ</option><option value="350">350 ms — เน็ตแกว่ง</option></select></div>
+      <div><label>โหมด</label><select id="networkMode"><option value="manual" selected>Manual</option><option value="smart">Smart Network</option></select></div>
+      <div><label>Bitrate</label><select id="bitrate"><option value="4000">4 Mbps</option><option value="6000">6 Mbps</option><option value="8000" selected>8 Mbps</option><option value="10000">10 Mbps</option><option value="12000">12 Mbps</option><option value="16000">16 Mbps</option></select></div>
+      <div><label>Buffer</label><select id="buffer"><option value="0">0 ms</option><option value="100">100 ms</option><option value="200" selected>200 ms</option><option value="350">350 ms</option></select></div>
     </div>
-    <div class="spacer"></div>
-    <div class="row3"><div><label>Codec</label><select id="codec"><option value="h264" selected>H.264 — แนะนำ</option><option value="">Auto</option><option value="vp8">VP8</option><option value="vp9">VP9</option></select></div><div id="smartMinWrap"><label>Smart bitrate ต่ำสุด</label><select id="smartMin"><option value="1200">1.2 Mbps</option><option value="1800" selected>1.8 Mbps — แนะนำ</option><option value="2500">2.5 Mbps</option><option value="3200">3.2 Mbps</option></select></div><div id="smartFallbackWrap"><label>เมื่อเน็ตวิกฤตนาน</label><select id="smartFallback"><option value="0" selected>คงความละเอียดเดิม — ปรับเฉพาะ Bitrate</option></select></div></div>
-    <div class="spacer"></div><div class="row"><button id="connect" class="primary">เปิดภาพกล้องที่เลือก</button><button id="disconnect" class="danger">ปิดภาพ</button></div>
-    <div class="spacer"></div><div class="notice"><b>ค่าเริ่มต้น = Manual.</b> เปิด Smart Network เฉพาะเวลาต้องการให้ระบบลด bitrate อัตโนมัติเมื่อ 4G/5G อ่อน</div>
+    <details class="advanced compact-details">
+      <summary>ตั้งค่าเพิ่มเติม</summary>
+      <div class="spacer"></div>
+      <div class="row3">
+        <div><label>Codec</label><select id="codec"><option value="h264" selected>H.264</option><option value="">Auto</option><option value="vp8">VP8</option><option value="vp9">VP9</option></select></div>
+        <div id="smartMinWrap"><label>Smart bitrate ต่ำสุด</label><select id="smartMin"><option value="1200">1.2 Mbps</option><option value="1800" selected>1.8 Mbps</option><option value="2500">2.5 Mbps</option><option value="3200">3.2 Mbps</option></select></div>
+        <div id="smartFallbackWrap"><label>Smart fallback</label><select id="smartFallback"><option value="0" selected>ปรับ Bitrate เท่านั้น</option></select></div>
+      </div>
+    </details>
   </div>
 </section>
 
 <aside>
-  <div class="card"><div class="section-title">OBS Browser Source — กล้องที่เลือก</div><div class="copybox"><input id="obsUrl" readonly><button id="copy">คัดลอก</button></div></div>
+  <div class="card"><div class="section-title">OBS Browser Source</div><div class="copybox"><input id="obsUrl" readonly><button id="copy">คัดลอก</button></div></div>
   <div class="spacer"></div>
-  <div class="card"><div class="section-title">OBS URL กล้องที่ค้นพบ</div><div id="multiObsList" class="multi-obs-list"></div></div>
-  <div class="spacer"></div>
-  <div class="card"><div class="section-title">สถานะเครือข่ายสด</div><div class="kv"><div>โหมด</div><div id="statNetworkMode">-</div><div>สถานะเน็ต</div><div id="smartState">-</div><div>Target bitrate</div><div id="smartTarget">-</div><div>Bitrate รับจริง</div><div id="smartActual">-</div><div>Packet loss</div><div id="smartLoss">-</div><div>RTT</div><div id="smartRtt">-</div><div>Jitter</div><div id="smartJitter">-</div></div></div>
-  <div class="spacer"></div>
-  <div class="card"><div class="section-title">Telemetry จากมือถือ</div><div class="kv"><div>ชื่อกล้อง</div><div id="telName">-</div><div>อุปกรณ์</div><div id="telPlatform">-</div><div>Requested</div><div id="telRequested">รอข้อมูล…</div><div>Camera settings</div><div id="telActual">-</div><div>Measured FPS</div><div id="telMeasured">-</div><div>Camera</div><div id="telCamera">-</div><div>ผล FPS</div><div id="telVerdict">-</div><div>Smart profile</div><div id="telSmartProfile">-</div></div></div>
-  <div class="spacer"></div><div class="card"><div class="section-title">Log</div><div id="log" class="log"></div></div>
+  <div class="card"><div class="section-title">สถานะสด</div><div class="kv compact-kv"><div>โหมด</div><div id="statNetworkMode">-</div><div>เน็ต</div><div id="smartState">-</div><div>Target</div><div id="smartTarget">-</div><div>รับจริง</div><div id="smartActual">-</div><div>Loss</div><div id="smartLoss">-</div><div>RTT</div><div id="smartRtt">-</div><div>Jitter</div><div id="smartJitter">-</div></div></div>
+
+  <details class="card advanced-card compact-details">
+    <summary>ข้อมูลเพิ่มเติม</summary>
+    <div class="spacer"></div>
+    <div class="section-title">Telemetry</div><div class="kv"><div>กล้อง</div><div id="telName">-</div><div>อุปกรณ์</div><div id="telPlatform">-</div><div>Requested</div><div id="telRequested">รอข้อมูล…</div><div>Camera settings</div><div id="telActual">-</div><div>Measured FPS</div><div id="telMeasured">-</div><div>Camera</div><div id="telCamera">-</div><div>ผล FPS</div><div id="telVerdict">-</div><div>Smart profile</div><div id="telSmartProfile">-</div></div>
+    <div class="spacer"></div><div class="section-title">OBS ทุกกล้อง</div><div id="multiObsList" class="multi-obs-list"></div>
+    <div class="spacer"></div><div class="section-title">Log</div><div id="log" class="log"></div>
+  </details>
 </aside>
 </div></main>
-<script src="sdk-loader.js?v=097"></script><script src="control.js?v=097"></script></body></html>
+<script src="sdk-loader.js?v=098"></script><script src="control.js?v=098"></script></body></html>
