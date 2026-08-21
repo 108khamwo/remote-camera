@@ -1,14 +1,25 @@
 <!doctype html>
-<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="styles.css?v=0101"><title>Control Center</title></head>
+<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="styles.css?v=0110"><title>Control Center</title></head>
 <body><main class="wrap compact-control">
-<div class="topbar"><div class="brand">🖥️ Control Center <span class="version">v0.10.1</span></div><a class="badge" href="index.html">หน้าหลัก</a></div>
+<div class="topbar"><div class="brand">🖥️ Control Center <span class="version">v0.11.0</span></div><a class="badge" href="index.html">หน้าหลัก</a></div>
 
 <div class="card camera-bar-card">
   <div class="camera-select-row">
     <div class="camera-select-main"><label for="cameraSelect">เลือกกล้อง</label><select id="cameraSelect"><option>กำลังค้นหา…</option></select></div>
     <div><div class="section-title">กล้องออนไลน์</div><div id="discoveryStatus" class="mini">กำลังค้นหา…</div></div>
   </div>
-  <div id="cameraChips" class="camera-chips camera-chips-main"></div>
+  <div class="control-message-tools">
+    <div id="cameraChips" class="camera-chips camera-chips-main"></div>
+    <button id="controlMessageOpen" class="ghost control-message-open" type="button">💬 ข้อความ</button>
+  </div>
+  <div id="controlMessagePanel" class="control-message-panel" hidden>
+    <div class="control-message-compose">
+      <input id="controlMessageInput" type="text" maxlength="300" placeholder="พิมพ์ข้อความถึงกล้อง…">
+      <button id="controlMessageSendSelected" class="primary" type="button">ส่งกล้องนี้</button>
+      <button id="controlMessageSendAll" class="ghost" type="button">ส่งทุกกล้อง</button>
+    </div>
+    <div id="controlMessageHistory" class="control-message-history"></div>
+  </div>
   <input id="streamId" type="hidden"><input id="room" type="hidden">
   <details class="advanced compact-details">
     <summary>จัดการกล้อง</summary>
@@ -63,4 +74,5 @@
   </details>
 </aside>
 </div></main>
-<script src="sdk-loader.js?v=0101"></script><script src="control.js?v=0101"></script></body></html>
+<div id="controlMessageToast" class="control-message-toast" hidden><strong id="controlMessageToastFrom">ข้อความจากกล้อง</strong><div id="controlMessageToastText"></div></div>
+<script src="sdk-loader.js?v=0110"></script><script src="control.js?v=0110"></script></body></html>

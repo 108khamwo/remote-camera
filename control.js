@@ -5,6 +5,7 @@ let connectedStreamId='', lastTelemetry=null, smartFallbackActive=false, smartOr
 const pendingCommands=new Map();
 let commandSeq=0;
 let cameras=[];
+const controlMessages=[];let controlMessageToastTimer=null;
 const CAMERA_STORE='remoteCamAutoCamerasV3';
 const SELECTED_CAMERA_STORE='remoteCamSelectedCameraV1';
 let selectedCameraId=cleanId(localStorage.getItem(SELECTED_CAMERA_STORE)||'');
@@ -168,9 +169,10 @@ function setControlStatus(text,kind=''){
   el.textContent=text;el.classList.remove('ok','warn','bad');if(kind)el.classList.add(kind);
 }
 function routeRemotePayload(payload,{fallback=false,broadcast=false}={}){
-  const id=cleanId(payload?.targetStream||activeId());
-  if(!discoveryVdo||!id)throw new Error('ช่องควบคุมยังไม่พร้อม');
+  if(!discoveryVdo)throw new Error('ช่องควบคุมยังไม่พร้อม');
   if(broadcast)return discoveryVdo.sendData(payload,{allowFallback:true,preference:'any'});
+  const id=cleanId(payload?.targetStream||activeId());
+  if(!id)throw new Error('ยังไม่ได้เลือกกล้อง');
   const c=activeCamera();
   const target={streamID:id,allowFallback:true,preference:'any'};
   if(!fallback&&c?.uuid)target.uuid=c.uuid;
@@ -208,6 +210,37 @@ function setTelemetry(d,uuid=''){
 }
 function extractData(e){return e?.detail?.data??e?.detail??e?.data}
 function extractUuid(e){return e?.detail?.uuid??e?.uuid??''}
+function cleanMessageText(v){return String(v??'').replace(/\s+/g,' ').trim().slice(0,300)}
+function renderControlMessages(){
+  const box=$('#controlMessageHistory');if(!box)return;box.innerHTML='';
+  if(!controlMessages.length){box.innerHTML='<div class="mini">ยังไม่มีข้อความ</div>';return}
+  controlMessages.slice(-60).reverse().forEach(m=>{
+    const row=document.createElement('div');row.className=`control-msg-item ${m.mine?'from-control':'from-sender'}`;
+    const meta=document.createElement('div');meta.className='control-msg-meta';meta.textContent=`${m.mine?'Control':m.from||'กล้อง'} • ${new Date(m.ts).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})}`;
+    const text=document.createElement('div');text.textContent=m.text;row.append(meta,text);box.appendChild(row);
+  });
+}
+function addControlMessage(text,{mine=false,from='',ts=Date.now()}={}){
+  text=cleanMessageText(text);if(!text)return;
+  controlMessages.push({text,mine,from,ts});if(controlMessages.length>80)controlMessages.splice(0,controlMessages.length-80);renderControlMessages();
+}
+function showControlMessageToast(text,from='กล้อง'){
+  const toast=$('#controlMessageToast');if(!toast)return;
+  $('#controlMessageToastFrom').textContent=`ข้อความจาก ${from}`;$('#controlMessageToastText').textContent=text;toast.hidden=false;
+  if(controlMessageToastTimer)clearTimeout(controlMessageToastTimer);controlMessageToastTimer=setTimeout(()=>toast.hidden=true,9000);
+}
+function handleIncomingSenderMessage(d){
+  if(d?.targetRole&&d.targetRole!=='control')return;
+  const text=cleanMessageText(d?.text);if(!text)return;
+  const from=cleanMessageText(d?.cameraName)||cleanId(d?.streamID)||'กล้อง';
+  addControlMessage(text,{mine:false,from,ts:Number(d?.ts)||Date.now()});showControlMessageToast(text,from);log(`ข้อความจาก ${from}: ${text}`);
+}
+function sendControlMessage(text,{broadcast=false}={}){
+  text=cleanMessageText(text);if(!text)return false;
+  const id=broadcast?'':activeId();if(!broadcast&&!id){log('ส่งข้อความไม่ได้: ยังไม่ได้เลือกกล้อง');return false}
+  const payload={type:'remote-camera-message',targetRole:'sender',from:'control',text,ts:Date.now()};if(id)payload.targetStream=id;
+  try{routeRemotePayload(payload,{broadcast});addControlMessage(text,{mine:true,from:broadcast?'ทุกกล้อง':activeName(),ts:payload.ts});return true}catch(e){log(`ส่งข้อความไม่สำเร็จ: ${e.message}`);return false}
+}
 function collectListing(value,out=[],depth=0){
   if(depth>5||value==null)return out;
   if(Array.isArray(value)){value.forEach(v=>collectListing(v,out,depth+1));return out}
@@ -253,7 +286,7 @@ async function startDiscovery(){
     const c=cameras.find(x=>x.uuid===uuid);if(c)c.uuid='';
   });
   discoveryVdo.addEventListener('peerLatency',e=>{const uuid=extractUuid(e);const c=cameras.find(x=>x.uuid===uuid);if(c?.id===activeId()){const v=e.detail?.latency??e.detail?.rtt??e.detail?.value;if(v!=null)$('#latency').textContent=`${Math.round(v)} ms`}});
-  discoveryVdo.addEventListener('dataReceived',e=>{const d=extractData(e),uuid=extractUuid(e);if(d?.type==='remote-camera-telemetry')setTelemetry(d,uuid);else if(d?.type==='remote-camera-ack')handleCommandAck(d,uuid);});
+  discoveryVdo.addEventListener('dataReceived',e=>{const d=extractData(e),uuid=extractUuid(e);if(d?.type==='remote-camera-telemetry')setTelemetry(d,uuid);else if(d?.type==='remote-camera-ack')handleCommandAck(d,uuid);else if(d?.type==='remote-camera-message')handleIncomingSenderMessage(d);});
   discoveryVdo.addEventListener('connectionRecovered',()=>log('Auto Discovery recovered'));
   discoveryVdo.addEventListener('connectionFailed',()=>log('Auto Discovery connection failed'));
   if(typeof discoveryVdo.autoConnect==='function'){
@@ -283,7 +316,7 @@ function handleReceiverStats(d){
   $('#smartState').textContent=stateThai(d.state);$('#smartTarget').textContent=d.currentBitrate?`${(d.currentBitrate/1000).toFixed(d.currentBitrate%1000?1:0)} Mbps`:'-';$('#smartActual').textContent=d.bitrateKbps?`${(d.bitrateKbps/1000).toFixed(2)} Mbps`:'-';$('#smartLoss').textContent=d.lossPct!=null?fmt(d.lossPct,2,'%'):'-';$('#smartRtt').textContent=d.rttMs!=null?fmt(d.rttMs,0,' ms'):'-';$('#smartJitter').textContent=d.jitterMs!=null?fmt(d.jitterMs,0,' ms'):'-';
   const badge=$('#smartBadge');badge.textContent=isSmart()?`SMART ${stateThai(d.state)}`:'MANUAL';badge.classList.toggle('ok',d.state==='good');
   if(d.action==='bitrate'&&d.reason&&isSmart())log(`Smart Network → ${(d.currentBitrate/1000).toFixed(1)} Mbps (${d.reason})`);
-  // v0.10.1: Smart Network adapts viewer bitrate only. It no longer sends camera-quality commands back to phones.
+  // v0.11.0: Smart Network adapts viewer bitrate only. It no longer sends camera-quality commands back to phones.
 }
 function resetTelemetry(){lastTelemetry=null;$('#telName').textContent=activeName();$('#telPlatform').textContent=activeCamera()?.platform||'-';$('#telRequested').textContent='รอข้อมูล…';['telActual','telMeasured','telCamera','telVerdict','telSmartProfile'].forEach(id=>$('#'+id).textContent='-')}
 
@@ -345,6 +378,11 @@ setTimeout(()=>maybeAutoOpen(),350);
 ['bitrate','buffer','codec','networkMode','smartMin','smartFallback'].forEach(id=>$('#'+id).addEventListener('change',()=>{updateObs();renderMultiObs();reloadPreview()}));
 $('#cameraSelect').addEventListener('change',e=>selectCamera(e.target.value,{fromUser:true}).catch(x=>log(`Select error: ${x.message}`)));
 $('#cameraChips').addEventListener('click',e=>{const b=e.target.closest('[data-id]');if(b){e.preventDefault();selectCamera(b.dataset.id,{fromUser:true}).catch(x=>log(`Select error: ${x.message}`))}});
+$('#controlMessageOpen').onclick=()=>{$('#controlMessagePanel').hidden=!$('#controlMessagePanel').hidden;renderControlMessages()};
+$('#controlMessageSendSelected').onclick=()=>{const input=$('#controlMessageInput');if(sendControlMessage(input.value,{broadcast:false}))input.value=''};
+$('#controlMessageSendAll').onclick=()=>{const input=$('#controlMessageInput');if(sendControlMessage(input.value,{broadcast:true}))input.value=''};
+$('#controlMessageInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#controlMessageSendSelected').click()}});
+$('#controlMessageToast').addEventListener('click',()=>{$('#controlMessagePanel').hidden=false;$('#controlMessageToast').hidden=true;renderControlMessages()});
 $('#refreshDiscovery').onclick=()=>restartDiscovery().catch(e=>log(`Discovery restart error: ${e.message}`));
 $('#forgetOffline').onclick=()=>{cameras=cameras.filter(c=>c.online);if(selectedCameraId&&!cameras.some(c=>c.id===selectedCameraId))rememberSelectedCamera('');registrySignature='';saveCameras();renderRegistry(null,{force:true});log('ล้างรายการ Offline แล้ว')};
 window.addEventListener('message',e=>{if(e.source!==$('#remoteFrame').contentWindow)return;const d=e.data;if(d?.type==='remote-camera-receiver-stats')handleReceiverStats(d)});
@@ -365,4 +403,4 @@ $('#copy').onclick=async()=>{if(!$('#obsUrl').value)return;await navigator.clipb
 setInterval(markOffline,2000);
 window.addEventListener('beforeunload',()=>{try{discoveryCtl?.stop?.()}catch{};try{discoveryVdo?.disconnect?.()}catch{}});
 startDiscovery().catch(e=>{log(`Auto Discovery error: ${e.message}`);$('#discoveryStatus').innerHTML='<b>เชื่อมไม่สำเร็จ</b><span>กด “ค้นหากล้องใหม่” เพื่อลองอีกครั้ง</span>'});
-log(`v0.10.1 พร้อม — Preview เปิดจาก Stream ID โดยตรง + เลือกกล้องแสดงตลอด • Offline grace ${OFFLINE_MS/1000}s`);
+log(`v0.11.0 พร้อม — Preview เปิดจาก Stream ID โดยตรง + เลือกกล้องแสดงตลอด • Offline grace ${OFFLINE_MS/1000}s`);

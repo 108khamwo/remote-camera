@@ -2,129 +2,175 @@
 <html lang="th">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#08131e">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <meta name="theme-color" content="#050a10">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=0101">
-  <title>Sender • Remote Camera</title>
+  <link rel="stylesheet" href="styles.css?v=0110">
+  <title>Remote Camera</title>
 </head>
-<body>
-<main class="wrap sender-clean">
-  <div class="topbar sender-topbar">
-    <div class="brand">📱 Remote Camera <span class="version">v0.10.1</span></div>
-    <div class="sender-top-actions"><span id="platformBadge" class="badge">ตรวจอุปกรณ์…</span><a class="badge" href="index.html">หน้าหลัก</a></div>
+<body class="sender-call-body">
+<main class="sender-call-shell">
+  <header class="sender-call-topbar">
+    <div class="sender-call-title">
+      <strong id="mainCameraName">Remote Camera</strong>
+      <span id="platformBadge" class="sender-call-platform">ตรวจอุปกรณ์…</span>
+    </div>
+    <div class="sender-call-top-actions">
+      <button id="messageOpenBtn" class="call-icon-btn" type="button" aria-label="ข้อความ">💬</button>
+      <button id="screenRestBtn" class="call-icon-btn" type="button" aria-label="พักหน้าจอ">🌙</button>
+      <button id="settingsOpenBtn" class="call-icon-btn" type="button" aria-label="ตั้งค่า">⚙️</button>
+    </div>
+  </header>
+
+  <section class="sender-call-stage">
+    <video id="cameraVideo" autoplay playsinline muted></video>
+    <div class="sender-call-stage-shade"></div>
+    <div class="sender-call-overlay-top">
+      <span id="liveBadge" class="call-live-pill">OFFLINE</span>
+      <span id="camBadge" class="call-camera-pill">—</span>
+    </div>
+
+    <div id="incomingMessageToast" class="sender-message-toast" hidden>
+      <div class="sender-message-toast-label">ข้อความจาก Control</div>
+      <div id="incomingMessageText" class="sender-message-toast-text"></div>
+    </div>
+
+    <div id="zoomPresetFloat" class="sender-zoom-preset-float" hidden>
+      <button id="zoomPreset05" class="call-zoom-preset" type="button" hidden>0.5×</button>
+      <button id="zoomPreset1" class="call-zoom-preset" type="button" hidden>1×</button>
+    </div>
+
+    <div class="sender-call-status-strip">
+      <span id="senderSimpleStatus">พร้อมส่งภาพ</span>
+      <span id="zoomCurrent" class="sender-call-zoom-readout">1.00×</span>
+    </div>
+  </section>
+
+  <section class="sender-call-controls">
+    <button id="zoomOutBtn" class="call-control-btn zoom-hold-btn" type="button" hidden aria-label="ซูมออก">
+      <span class="call-control-symbol">−</span><span>Zoom</span>
+    </button>
+    <button id="sendToggleBtn" class="call-send-btn" type="button">
+      <span id="sendToggleIcon" class="call-send-icon">●</span>
+      <span id="sendToggleLabel">ส่งภาพ</span>
+    </button>
+    <button id="zoomInBtn" class="call-control-btn zoom-hold-btn" type="button" hidden aria-label="ซูมเข้า">
+      <span class="call-control-symbol">+</span><span>Zoom</span>
+    </button>
+  </section>
+  <div id="zoomUnsupported" class="sender-call-note" hidden>เบราว์เซอร์นี้ไม่เปิดระบบ Zoom ให้เว็บ</div>
+
+  <!-- Hidden compatibility controls used by the existing engine. -->
+  <div hidden>
+    <button id="startCamera" type="button"></button>
+    <button id="startSend" type="button"></button>
+    <button id="stopBtn" type="button"></button>
   </div>
 
-  <section class="card sender-main-card">
-    <div class="preview sender-preview">
-      <video id="cameraVideo" autoplay playsinline muted></video>
-      <div class="overlay"><div id="liveBadge" class="status">OFFLINE</div><div id="camBadge" class="status">—</div></div>
-    </div>
-
-    <div class="toolbar sender-camera-toolbar">
-      <button id="frontBtn" class="ghost">กล้องหน้า</button>
-      <button id="rearBtn" class="ghost">กล้องหลัง</button>
-      <button id="zoomOutBtn" class="ghost zoom-hold-btn" hidden>− Zoom</button>
-      <button id="zoomInBtn" class="ghost zoom-hold-btn" hidden>+ Zoom</button>
-    </div>
-
-    <div id="zoomPanel" class="zoom-panel sender-zoom-panel" hidden>
-      <div class="zoom-preset-row sender-zoom-presets">
-        <button id="zoomPreset05" class="ghost zoom-preset-btn" type="button" hidden>0.5×</button>
-        <button id="zoomPreset1" class="ghost zoom-preset-btn" type="button" hidden>1×</button>
-      </div>
-      <div class="sender-zoom-meta">
-        <div>
-          <label>Zoom</label>
-          <div id="zoomCurrent" class="zoom-readout">1.00×</div>
-          <div class="mini" id="zoomInfo">กด − / + ค้างเพื่อซูม</div>
+  <!-- Settings sheet: all non-essential controls live here. -->
+  <div id="settingsSheet" class="sender-sheet" hidden>
+    <div class="sender-sheet-backdrop" data-close-settings></div>
+    <section class="sender-sheet-panel" role="dialog" aria-modal="true" aria-label="ตั้งค่า">
+      <header class="sender-sheet-header"><strong>ตั้งค่า</strong><button class="sheet-close-btn" type="button" data-close-settings>✕</button></header>
+      <div class="sender-sheet-scroll">
+        <div class="settings-group">
+          <label>คุณภาพภาพ</label>
+          <select id="quality">
+            <option value="1080_30" selected>1080p / 30 — คมชัด</option>
+            <option value="1080_60">1080p / สูงสุด 60</option>
+            <option value="720_60">720p / สูงสุด 60 — ลื่น</option>
+            <option value="720_30">720p / 30</option>
+            <option value="1080_24_detail">1080p / 24 — เน้นภาพนิ่ง</option>
+          </select>
         </div>
-        <div>
-          <label>ความเร็ว</label>
-          <select id="zoomSpeed"><option value="slow" selected>ช้า</option><option value="normal">ปกติ</option><option value="fast">เร็ว</option></select>
+
+        <div class="settings-group">
+          <label>สลับกล้อง</label>
+          <div class="settings-button-row">
+            <button id="frontBtn" class="ghost" type="button">กล้องหน้า</button>
+            <button id="rearBtn" class="ghost" type="button">กล้องหลัง</button>
+          </div>
         </div>
-      </div>
-    </div>
-    <div id="zoomUnsupported" class="sender-inline-note" hidden>อุปกรณ์นี้ไม่รองรับ Zoom ผ่านเว็บ</div>
-  </section>
 
-  <section class="card sender-actions-card">
-    <div class="sender-quality-row">
-      <div>
-        <label>คุณภาพ</label>
-        <select id="quality">
-          <option value="1080_30" selected>1080p / 30 — คมชัด</option>
-          <option value="1080_60">1080p / สูงสุด 60</option>
-          <option value="720_60">720p / สูงสุด 60 — ลื่น</option>
-          <option value="720_30">720p / 30</option>
-          <option value="1080_24_detail">1080p / 24 — เน้นภาพนิ่ง</option>
-        </select>
-      </div>
-      <div class="sender-live-state">
-        <label>สถานะ</label>
-        <div id="senderSimpleStatus">พร้อมเปิดกล้อง</div>
-      </div>
-    </div>
-    <div class="sender-action-buttons">
-      <button id="startCamera" class="good">เปิดกล้อง</button>
-      <button id="startSend" class="primary">เริ่มส่งภาพ</button>
-      <button id="stopBtn" class="danger">หยุด</button>
-    </div>
-  </section>
-
-  <details class="card sender-settings-card">
-    <summary>ตั้งค่าเพิ่มเติม</summary>
-    <div class="sender-settings-body">
-      <div class="row">
-        <div><label>ชื่อกล้อง</label><input id="cameraName" placeholder="เช่น กล้องหน้าเวที"></div>
-        <div><label>วิธีเลือกกล้อง</label><div class="mini android-help" id="cameraHelp">ใช้กล้องหน้า / กล้องหลังเป็นหลัก</div></div>
-      </div>
-
-      <div class="spacer"></div>
-      <div class="row">
-        <div><label>กล้องที่เบราว์เซอร์มองเห็น</label><select id="deviceSelect"><option value="">อัตโนมัติ / ใช้หน้า-หลัง</option></select></div>
-        <div><label>&nbsp;</label><button id="applyDeviceBtn" class="ghost" type="button">ใช้กล้องที่เลือก</button></div>
-      </div>
-
-      <input id="room" type="hidden">
-      <input id="streamId" type="hidden">
-
-      <details class="advanced sender-system-details">
-        <summary>ข้อมูลระบบ</summary>
-        <div class="spacer"></div>
-        <div class="row">
-          <div><label>Room</label><input id="roomView" readonly></div>
-          <div><label>Device / Stream ID</label><input id="streamIdView" readonly></div>
+        <div id="zoomPanel" class="settings-group" hidden>
+          <label>ความเร็ว Zoom</label>
+          <select id="zoomSpeed">
+            <option value="slow" selected>ช้า — แนะนำ</option>
+            <option value="normal">ปกติ</option>
+            <option value="fast">เร็ว</option>
+          </select>
+          <div id="zoomInfo" class="mini settings-hint">กด − / + ค้างเพื่อซูม</div>
         </div>
-        <div class="spacer"></div>
-        <button id="newStreamId" class="ghost" type="button">สร้าง Device ID ใหม่</button>
-      </details>
-    </div>
-  </details>
 
-  <details class="card sender-diagnostics-card">
-    <summary>สถานะและข้อมูลตรวจสอบ</summary>
-    <div class="sender-settings-body">
-      <div class="kv sender-status-kv">
-        <div>อุปกรณ์</div><div id="statPlatform">-</div>
-        <div>Requested</div><div id="statRequested">-</div>
-        <div>Camera</div><div id="statCamera">-</div>
-        <div>Measured FPS</div><div id="statMeasuredFps">-</div>
-        <div>FPS capability</div><div id="statFpsCap">-</div>
-        <div>ส่ง Track</div><div id="statOutput">Direct camera track</div>
-        <div>Encoder hint</div><div id="statHint">motion</div>
-        <div>Orientation</div><div id="statSharp">-</div>
-        <div>Devices</div><div id="statDevices">-</div>
-        <div>Mic</div><div id="statMic">-</div>
-        <div>WebRTC</div><div id="statRtc">-</div>
-        <div>Viewers</div><div id="statPeers">0</div>
-        <div>Remote control</div><div id="statRemote">พร้อม</div>
-        <div>Smart profile</div><div id="statSmartProfile">ปกติ</div>
+        <div class="settings-group">
+          <label>ชื่อกล้อง</label>
+          <input id="cameraName" placeholder="เช่น กล้องหน้าเวที">
+        </div>
+
+        <details class="settings-details">
+          <summary>เลือกกล้องขั้นสูง</summary>
+          <div class="settings-details-body">
+            <div id="cameraHelp" class="mini">ใช้กล้องหน้า / กล้องหลังเป็นหลัก</div>
+            <select id="deviceSelect"><option value="">อัตโนมัติ / ใช้หน้า-หลัง</option></select>
+            <button id="applyDeviceBtn" class="ghost" type="button">ใช้กล้องที่เลือก</button>
+          </div>
+        </details>
+
+        <details class="settings-details">
+          <summary>ข้อมูลระบบและตรวจสอบ</summary>
+          <div class="settings-details-body">
+            <input id="room" type="hidden"><input id="streamId" type="hidden">
+            <div class="row">
+              <div><label>Room</label><input id="roomView" readonly></div>
+              <div><label>Device / Stream ID</label><input id="streamIdView" readonly></div>
+            </div>
+            <button id="newStreamId" class="ghost" type="button">สร้าง Device ID ใหม่</button>
+            <div class="kv sender-status-kv">
+              <div>อุปกรณ์</div><div id="statPlatform">-</div>
+              <div>Requested</div><div id="statRequested">-</div>
+              <div>Camera</div><div id="statCamera">-</div>
+              <div>Measured FPS</div><div id="statMeasuredFps">-</div>
+              <div>FPS capability</div><div id="statFpsCap">-</div>
+              <div>ส่ง Track</div><div id="statOutput">Direct camera track</div>
+              <div>Encoder hint</div><div id="statHint">motion</div>
+              <div>Orientation</div><div id="statSharp">-</div>
+              <div>Devices</div><div id="statDevices">-</div>
+              <div>Mic</div><div id="statMic">-</div>
+              <div>WebRTC</div><div id="statRtc">-</div>
+              <div>Viewers</div><div id="statPeers">0</div>
+              <div>Remote control</div><div id="statRemote">พร้อม</div>
+              <div>Smart profile</div><div id="statSmartProfile">ปกติ</div>
+            </div>
+            <div id="log" class="log sender-log"></div>
+          </div>
+        </details>
       </div>
-      <div class="spacer"></div>
-      <div id="log" class="log sender-log"></div>
-    </div>
-  </details>
+    </section>
+  </div>
+
+  <!-- Message sheet. Messaging is implemented on our SDK data channel, not by copying CM108's UI. -->
+  <div id="messageSheet" class="sender-sheet" hidden>
+    <div class="sender-sheet-backdrop" data-close-message></div>
+    <section class="sender-sheet-panel sender-message-panel" role="dialog" aria-modal="true" aria-label="ข้อความ">
+      <header class="sender-sheet-header"><strong>ข้อความ</strong><button class="sheet-close-btn" type="button" data-close-message>✕</button></header>
+      <div class="sender-message-history" id="senderMessageHistory"><div class="sender-message-empty">ยังไม่มีข้อความ</div></div>
+      <div class="sender-quick-replies">
+        <button type="button" data-quick-reply="รับทราบ">รับทราบ</button>
+        <button type="button" data-quick-reply="รอสักครู่">รอสักครู่</button>
+        <button type="button" data-quick-reply="พร้อมแล้ว">พร้อมแล้ว</button>
+      </div>
+      <div class="sender-message-compose">
+        <input id="senderMessageInput" type="text" maxlength="300" placeholder="พิมพ์ข้อความ…">
+        <button id="senderMessageSend" type="button">ส่ง</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- Black rest screen keeps the stream alive while reducing preview/UI rendering. -->
+  <div id="screenRestOverlay" class="sender-rest-overlay" hidden>
+    <div id="screenRestHint" class="sender-rest-hint">พักหน้าจอแล้ว<br><small>ภาพและเสียงยังส่งตามปกติ • แตะเพื่อกลับ</small></div>
+  </div>
 </main>
-<script src="sdk-loader.js?v=0101"></script><script src="sender.js?v=0101"></script>
-</body></html>
+<script src="sdk-loader.js?v=0110"></script><script src="sender.js?v=0110"></script>
+</body>
+</html>

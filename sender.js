@@ -7,12 +7,24 @@ let explicitDeviceId='', openingCamera=false;
 let peerIds=new Set();
 let measuredCameraFps=0, frameMeterGeneration=0, telemetryTimer=null;
 let smartProfile='ปกติ';
+let wakeLockSentinel=null, restHintTimer=null, messageToastTimer=null;
+const senderMessages=[];
 const video=$('#cameraVideo');
 function updateSimpleStatus(){
-  const el=$('#senderSimpleStatus'); if(!el)return;
-  if(isPublishing){el.textContent='กำลังส่งภาพ';el.className='goodtext';return}
-  if(cameraStream?.getVideoTracks?.().some(t=>t.readyState==='live')){el.textContent='กล้องพร้อม';el.className='goodtext';return}
-  el.textContent='พร้อมเปิดกล้อง';el.className='';
+  const el=$('#senderSimpleStatus');
+  const sendBtn=$('#sendToggleBtn'), sendLabel=$('#sendToggleLabel'), sendIcon=$('#sendToggleIcon');
+  const liveTrack=cameraStream?.getVideoTracks?.().some(t=>t.readyState==='live');
+  if(isPublishing){
+    if(el){el.textContent='กำลังส่งภาพ';el.className='goodtext'}
+    if(sendBtn)sendBtn.classList.add('is-live');
+    if(sendLabel)sendLabel.textContent='หยุดส่ง';
+    if(sendIcon)sendIcon.textContent='■';
+    return;
+  }
+  if(el){el.textContent=liveTrack?'กล้องพร้อม':'พร้อมส่งภาพ';el.className=liveTrack?'goodtext':''}
+  if(sendBtn)sendBtn.classList.remove('is-live');
+  if(sendLabel)sendLabel.textContent='ส่งภาพ';
+  if(sendIcon)sendIcon.textContent='●';
 }
 
 const UA=navigator.userAgent||'';
@@ -49,12 +61,13 @@ function initIdentity(){
   $('#platformBadge').textContent=`${PLATFORM} • ${BROWSER}`;
   $('#statPlatform').textContent=`${PLATFORM} / ${BROWSER}`;
   $('#cameraHelp').textContent=IS_ANDROID?'Android: ใช้ “กล้องหน้า / กล้องหลัง” เป็นหลัก ครั้งแรกถ้าเบราว์เซอร์ถามให้เลือก “อัตโนมัติ” และจดจำตัวเลือกถ้ามี':'ใช้ “กล้องหน้า / กล้องหลัง” เป็นหลัก รายชื่อเลนส์รายตัวอยู่ในตัวเลือกขั้นสูง';
-  $('#cameraName').addEventListener('input',()=>localStorage.setItem('remoteCamName',$('#cameraName').value.trim()));
+  const syncCameraName=()=>{const name=$('#cameraName').value.trim();localStorage.setItem('remoteCamName',name);if($('#mainCameraName'))$('#mainCameraName').textContent=name||'Remote Camera'};
+  $('#cameraName').addEventListener('input',syncCameraName);syncCameraName();
 }
 function generateNewStreamId(){const id=`cam_${platformSlug()}_${shortId(8)}`;$('#streamId').value=id;if($('#streamIdView'))$('#streamIdView').value=id;localStorage.setItem('remoteCamStreamId',id);$('#cameraName').value=`${PLATFORM} ${id.slice(-4).toUpperCase()}`;localStorage.setItem('remoteCamName',$('#cameraName').value.trim());log(`สร้าง Device ID ใหม่อัตโนมัติ: ${id}`)}
 function publisherLabel(){const name=($('#cameraName').value.trim()||$('#streamId').value).replace(/\|/g,' ');return `RCAM2|${DEVICE_ID}|${name}|${PLATFORM}|${BROWSER}`}
 
-// Smooth Zoom v0.10.1
+// Smooth Zoom v0.11.0
 // Adds 0.5× / 1× smooth return presets when the camera capability range supports them.
 // PWA browsers do not expose AVFoundation/Camera2 native ramping consistently.
 // Strategy:
@@ -307,6 +320,69 @@ function startTelemetry(){
   setTimeout(sendTelemetry,350);
 }
 
+async function requestWakeLock(){
+  if(!('wakeLock' in navigator)||wakeLockSentinel)return;
+  try{
+    wakeLockSentinel=await navigator.wakeLock.request('screen');
+    wakeLockSentinel.addEventListener?.('release',()=>{wakeLockSentinel=null});
+    log('Screen Wake Lock พร้อม — ป้องกันหน้าจอดับระหว่างส่งภาพ');
+  }catch(e){log(`Wake Lock ใช้ไม่ได้: ${e.message}`)}
+}
+async function releaseWakeLock(){
+  try{await wakeLockSentinel?.release?.()}catch{}
+  wakeLockSentinel=null;
+}
+function setScreenRest(active){
+  const overlay=$('#screenRestOverlay');if(!overlay)return;
+  overlay.hidden=!active;
+  document.body.classList.toggle('screen-resting',active);
+  if(restHintTimer){clearTimeout(restHintTimer);restHintTimer=null}
+  if(active){
+    overlay.classList.remove('quiet');
+    restHintTimer=setTimeout(()=>overlay.classList.add('quiet'),2200);
+    // Keep Wake Lock active: true OS screen-off commonly suspends Safari/PWA camera/WebRTC.
+    if(isPublishing)requestWakeLock();
+  }else overlay.classList.remove('quiet');
+}
+
+function cleanMessageText(v){return String(v??'').replace(/\s+/g,' ').trim().slice(0,300)}
+function renderSenderMessages(){
+  const box=$('#senderMessageHistory');if(!box)return;
+  box.innerHTML='';
+  if(!senderMessages.length){const e=document.createElement('div');e.className='sender-message-empty';e.textContent='ยังไม่มีข้อความ';box.appendChild(e);return}
+  senderMessages.slice(-60).forEach(m=>{
+    const row=document.createElement('div');row.className=`sender-msg ${m.mine?'from-me':'from-control'}`;
+    const meta=document.createElement('div');meta.className='sender-msg-meta';meta.textContent=`${m.mine?'เรา':'Control'} • ${new Date(m.ts).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})}`;
+    const text=document.createElement('div');text.textContent=m.text;row.append(meta,text);box.appendChild(row);
+  });
+  box.scrollTop=box.scrollHeight;
+}
+function addSenderMessage(text,{mine=false,ts=Date.now()}={}){
+  text=cleanMessageText(text);if(!text)return;
+  senderMessages.push({text,mine,ts});if(senderMessages.length>80)senderMessages.splice(0,senderMessages.length-80);renderSenderMessages();
+}
+function showIncomingMessage(text){
+  text=cleanMessageText(text);if(!text)return;
+  const toast=$('#incomingMessageToast'),el=$('#incomingMessageText');if(!toast||!el)return;
+  el.textContent=text;toast.hidden=false;
+  if(messageToastTimer)clearTimeout(messageToastTimer);
+  messageToastTimer=setTimeout(()=>{toast.hidden=true},9000);
+  try{navigator.vibrate?.([120,70,120])}catch{}
+}
+function handleIncomingControlMessage(d){
+  if(d?.targetRole&&d.targetRole!=='sender')return;
+  const myStream=normId($('#streamId').value);
+  if(d?.targetStream&&normId(d.targetStream)!==myStream)return;
+  const text=cleanMessageText(d?.text);if(!text)return;
+  addSenderMessage(text,{mine:false,ts:Number(d.ts)||Date.now()});showIncomingMessage(text);log(`ข้อความจาก Control: ${text}`);
+}
+function sendSenderMessage(text){
+  text=cleanMessageText(text);if(!text)return false;
+  if(!vdo||!isPublishing){log('ส่งข้อความไม่ได้: ยังไม่ได้เริ่มส่งภาพ');return false}
+  const payload={type:'remote-camera-message',targetRole:'control',from:'sender',text,ts:Date.now(),streamID:normId($('#streamId').value),deviceID:DEVICE_ID,cameraName:$('#cameraName').value.trim()||$('#streamId').value};
+  try{vdo.sendData(payload,{allowFallback:true,preference:'any'});addSenderMessage(text,{mine:true,ts:payload.ts});return true}catch(e){log(`ส่งข้อความไม่สำเร็จ: ${e.message}`);return false}
+}
+
 function updateCameraStatus(track){
   const s=track.getSettings(),{w,h,fps,hint}=q();
   const sw=s.width||video.videoWidth||0,sh=s.height||video.videoHeight||0,sf=Number(s.frameRate||0);
@@ -330,6 +406,7 @@ async function configureZoom(track){
   $('#zoomOutBtn').hidden=!supported;
   $('#zoomInBtn').hidden=!supported;
   $('#zoomPanel').hidden=!supported;
+  if($('#zoomPresetFloat'))$('#zoomPresetFloat').hidden=!supported;
   $('#zoomUnsupported').hidden=supported;
   if(supported){
     const current=Number(track.getSettings().zoom||caps.zoom.min);
@@ -435,14 +512,14 @@ async function startPublishing(){
   if(!room||!streamID)throw new Error('กรุณาระบุ Room และ Stream ID');
   vdo=new VDONinjaSDK({autoRecover:true,autoRelay:true,salt:'vdo.ninja'});
   vdo.addEventListener('connected',()=>{$('#statRtc').textContent='signaling connected';log('เชื่อม signaling แล้ว')});
-  vdo.addEventListener('publishing',()=>{isPublishing=true;$('#liveBadge').textContent='LIVE';updateSimpleStatus();$('#liveBadge').classList.add('ok');$('#statRtc').textContent='PUBLISHING';log('เริ่มส่ง WebRTC แล้ว');startTelemetry()});
+  vdo.addEventListener('publishing',()=>{isPublishing=true;$('#liveBadge').textContent='LIVE';updateSimpleStatus();$('#liveBadge').classList.add('ok');$('#statRtc').textContent='PUBLISHING';log('เริ่มส่ง WebRTC แล้ว');startTelemetry();requestWakeLock()});
   vdo.addEventListener('peerConnected',e=>{const id=e.detail?.uuid;if(id){peerIds.add(id);updatePeerCount();log(`Viewer connected (${peerIds.size})`);setTimeout(sendTelemetry,250)}});
   vdo.addEventListener('peerDisconnected',e=>{const id=e.detail?.uuid;if(id){peerIds.delete(id);updatePeerCount();log(`Viewer disconnected (${peerIds.size})`)}});
   vdo.addEventListener('connectionRecovered',()=>log('WebRTC recovered'));
   vdo.addEventListener('connectionFailed',()=>log('WebRTC connection failed'));
   const onData=e=>{const d=e.detail?.data??e.detail??e.data;const uuid=e.detail?.uuid??e.uuid??'';if(d&&typeof d==='object')handleRemote(d,uuid)};vdo.addEventListener('dataReceived',onData);
   await vdo.connect();await vdo.joinRoom({room});await vdo.publish(stream,{room,streamID,label:publisherLabel()});
-  isPublishing=true;$('#liveBadge').textContent='LIVE';updateSimpleStatus();$('#liveBadge').classList.add('ok');$('#statRtc').textContent='PUBLISHING';startTelemetry();
+  isPublishing=true;$('#liveBadge').textContent='LIVE';updateSimpleStatus();$('#liveBadge').classList.add('ok');$('#statRtc').textContent='PUBLISHING';startTelemetry();requestWakeLock();
 }
 
 
@@ -459,6 +536,7 @@ function sendRemoteAck(d,sourceUuid,{ok=true,message=''}={}){
 }
 
 async function handleRemote(d,sourceUuid=''){
+  if(d?.type==='remote-camera-message'){handleIncomingControlMessage(d);return}
   if(d?.type==='remote-camera-discover'){if(!d.targetStream||normId(d.targetStream)===normId($('#streamId').value))sendTelemetry();return}
   if(d?.type!=='remote-camera')return;
   if(d.targetStream && normId(d.targetStream)!==normId($('#streamId').value))return;
@@ -493,12 +571,18 @@ async function stopAll(){
   if(audioStream){audioStream.getTracks().forEach(t=>t.stop());audioStream=null}
   outStream=null;
   video.srcObject=null;
+  setScreenRest(false);releaseWakeLock();
   $('#liveBadge').textContent='OFFLINE';updateSimpleStatus();$('#liveBadge').classList.remove('ok');$('#statRtc').textContent='OFFLINE';$('#statMic').textContent='-';log('หยุดทั้งหมด')
 }
 
 $('#startCamera').onclick=()=>openCamera({facing:currentFacing}).catch(e=>log(`Camera error: ${e.message}`));
 $('#startSend').onclick=()=>startPublishing().catch(e=>log(`Publish error: ${e.message}`));
 $('#stopBtn').onclick=()=>stopAll();
+$('#sendToggleBtn').onclick=async()=>{
+  const btn=$('#sendToggleBtn');if(btn?.dataset.busy==='1')return;btn.dataset.busy='1';
+  try{if(isPublishing)await stopAll();else{if(!cameraStream)await openCamera({facing:currentFacing});await startPublishing()}}
+  catch(e){log(`Send toggle error: ${e.message}`)}finally{delete btn.dataset.busy;updateSimpleStatus()}
+};
 $('#frontBtn').onclick=()=>openCamera({facing:'user'}).catch(e=>log(`Switch error: ${e.message}`));
 $('#rearBtn').onclick=()=>openCamera({facing:'environment'}).catch(e=>log(`Switch error: ${e.message}`));
 $('#deviceSelect').onchange=()=>{log('เลือกกล้องขั้นสูงแล้ว — ยังไม่สลับจนกว่าจะกด “ใช้กล้องที่เลือก”')};
@@ -537,10 +621,22 @@ $('#quality').onchange=async()=>{
   log(`เปลี่ยนคุณภาพเป็น ${q().label} / hint=${q().hint}`);
   if(cameraStream){try{await openCamera({facing:currentFacing,deviceId:explicitDeviceId})}catch(e){log(`Quality switch error: ${e.message}`)}}
 };
+function openSheet(id){const el=$(id);if(el){el.hidden=false;document.body.style.overflow='hidden'}}
+function closeSheets(){['#settingsSheet','#messageSheet'].forEach(id=>{const el=$(id);if(el)el.hidden=true});document.body.style.overflow=''}
+$('#settingsOpenBtn').onclick=()=>openSheet('#settingsSheet');
+$('#messageOpenBtn').onclick=()=>openSheet('#messageSheet');
+document.querySelectorAll('[data-close-settings],[data-close-message]').forEach(el=>el.addEventListener('click',closeSheets));
+$('#screenRestBtn').onclick=()=>setScreenRest(true);
+$('#screenRestOverlay').addEventListener('click',()=>setScreenRest(false));
+$('#incomingMessageToast').addEventListener('click',()=>openSheet('#messageSheet'));
+$('#senderMessageSend').onclick=()=>{const input=$('#senderMessageInput');if(sendSenderMessage(input.value)){input.value=''}};
+$('#senderMessageInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#senderMessageSend').click()}});
+document.querySelectorAll('[data-quick-reply]').forEach(btn=>btn.addEventListener('click',()=>{if(sendSenderMessage(btn.dataset.quickReply||''))closeSheets()}));
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&isPublishing)requestWakeLock()});
 window.addEventListener('beforeunload',()=>stopAll());
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=0101').catch(()=>{});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=0110').catch(()=>{});
 $('#statHint').textContent=q().hint;
 $('#statSmartProfile').textContent=smartProfile;
 initIdentity();updateSimpleStatus();
 $('#newStreamId').onclick=generateNewStreamId;
-log(`v0.10.1 พร้อมใช้งาน — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
+log(`v0.11.0 พร้อมใช้งาน — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
