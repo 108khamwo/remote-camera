@@ -64,9 +64,11 @@ function upsertCamera(info,{render=true}={}){
   // If a Sender reconnects with a changed stream ID, merge it into the same card.
   let c=deviceId?cameras.find(x=>x.deviceId===deviceId):null;
   if(!c)c=cameras.find(x=>x.id===id);
-  if(!c){c={id,deviceId,name:id,platform:'',browser:'',transport:'room',online:false,lastSeen:0,uuid:''};cameras.push(c);log(`พบกล้องจริงจาก Sender: ${id}`)}
+  if(!c){c={id,deviceId,name:id,platform:'',browser:'',transport:info?.transport==='direct'?'direct':'room',online:false,lastSeen:0,uuid:''};cameras.push(c);log(`พบกล้องจริงจาก Sender: ${id}`)}
   else if(c.id!==id){const oldId=c.id;c.id=id;if(selectedCameraId===oldId)rememberSelectedCamera(id);if(connectedStreamId===oldId)connectedStreamId=id;}
-  c.transport='room';
+  if(info?.transport==='direct')c.transport='direct';
+  else if(info?.transport==='room')c.transport='room';
+  else if(!c.transport)c.transport='room';
   if(deviceId)c.deviceId=deviceId;
   if(info.label){const p=parseLabel(info.label,id);if(p.name)c.name=p.name;if(p.platform)c.platform=p.platform;if(p.browser)c.browser=p.browser}
   if(info.name)c.name=String(info.name);
@@ -224,7 +226,8 @@ function handleCommandAck(d,uuid=''){
 
 function setTelemetry(d,uuid=''){
   const id=cleanId(d?.streamID||'');if(!id)return;
-  const c=upsertCamera({id,deviceId:d?.deviceID||d?.deviceId,name:d?.cameraName,platform:d?.platform,browser:d?.browser,uuid,online:true},{render:false});
+  const transport=d?.transport==='direct'?'direct':'room';
+  const c=upsertCamera({id,deviceId:d?.deviceID||d?.deviceId,name:d?.cameraName,platform:d?.platform,browser:d?.browser,transport,uuid,online:true},{render:false});
   if(c)renderRegistry(id===activeId()?id:activeId());
   if(id!==activeId())return;
   lastTelemetry=d;const req=d?.requested||{},act=d?.actual||{};const reqF=Number(req.fps||0),actF=Number(act.fps||0),meas=Number(d?.measuredFps||0);
@@ -413,7 +416,7 @@ function upsertAutoDirect(item){
   return true;
 }
 function handleListing(e){
-  // v0.11.23: Native video stays Direct. A separate data-only Presence peer
+  // v0.11.24: Native video stays Direct. A separate data-only Presence peer
   // announces presence_cam_* in the room; normalize it back to cam_* here.
   const list=collectListing(e?.detail??e);
   let changed=false;
@@ -619,4 +622,4 @@ $('#copy').onclick=async()=>{if(!$('#obsUrl').value)return;await navigator.clipb
 setInterval(markOffline,2000);
 window.addEventListener('beforeunload',()=>{try{discoveryCtl?.stop?.()}catch{};try{discoveryVdo?.stopPublishing?.()}catch{};try{discoveryVdo?.disconnect?.()}catch{};try{nativePresenceVdo?.disconnect?.()}catch{}});
 startDiscovery().catch(e=>{log(`Auto Discovery error: ${e.message}`);$('#discoveryStatus').innerHTML='<b>เชื่อมไม่สำเร็จ</b><span>กด “ค้นหากล้องใหม่” เพื่อลองอีกครั้ง</span>'});
-log(`v0.11.23 พร้อม — Native Direct + แยก Presence Auto Discovery • Offline grace ${OFFLINE_MS/1000}s`);
+log(`v0.11.24 พร้อม — Native Direct + Auto Discovery + Native Telemetry • Offline grace ${OFFLINE_MS/1000}s`);

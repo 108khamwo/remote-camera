@@ -440,7 +440,7 @@ body.fullscreen-active .sender-call-controls{flex:none}
 }
 
 
-/* v0.11.22 — minimal centered landing page */
+/* v0.11.24 — minimal centered landing page */
 .home-body{
   min-height:100dvh;
   display:grid;
@@ -542,7 +542,7 @@ body.fullscreen-active .sender-call-controls{flex:none}
   .home-title-break{display:none}
 }
 
-/* v0.11.22 — compact OBS usage hint */
+/* v0.11.24 — compact OBS usage hint */
 .home-obs-help{
   margin-top:22px;
   padding-top:18px;
@@ -565,7 +565,7 @@ body.fullscreen-active .sender-call-controls{flex:none}
   .home-obs-help strong{display:block;margin-bottom:4px}
 }
 
-/* v0.11.23 Native Direct + Presence Auto Discovery */
+/* v0.11.24 Native Direct + Presence Auto Discovery */
 .native-direct-box{display:grid;gap:8px;padding:12px;border:1px solid rgba(255,255,255,.09);border-radius:12px;background:rgba(255,255,255,.025)}
 .native-direct-add{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}
 .native-direct-add input{min-width:0}
