@@ -1,6 +1,14 @@
-# ระบบ Live Streaming ระยะไกลผ่านมือถือ v0.11.20
+# ระบบ Live Streaming ระยะไกลผ่านมือถือ v0.11.22
 
-## v0.11.20
+## v0.11.22 Auto Discovery Native Direct
+
+- รองรับ Native Sender v0.3.4+ แบบอัตโนมัติ: เมื่อมือถือเริ่มส่งภาพ Stream ID จะถูกพบจาก VDO.Ninja room listing และสร้างปุ่มกล้องใน Control Center เอง
+- Native video ยังดูแบบ Direct (`?view=StreamID`) ไม่บังคับให้ video ใช้ room
+- ถ้าเป็น Web Sender เดิม ระบบ telemetry จะยืนยันแล้วเปลี่ยน transport กลับเป็น room ตามเดิม
+- ช่องเพิ่ม Native Direct ด้วยมือยังคงไว้เป็น fallback
+
+
+## v0.11.22
 - Control Center: เมื่อมีข้อความจาก Sender เข้ามาและแผงข้อความยังปิดอยู่ ระบบเปิดแผงข้อความให้อัตโนมัติทันที
 - เลื่อนไปยังข้อความล่าสุดโดยไม่โฟกัสช่องพิมพ์ เพื่อไม่ให้คีย์บอร์ดเด้งเอง
 - ไม่เปลี่ยน Message/Data Channel core ที่ใช้งานได้อยู่
@@ -36,3 +44,7 @@
 ### v0.11.17
 - แก้ไอคอนไมโครโฟน Mute ซ้อนกัน โดยบังคับให้แสดงเพียง glyph เดียวต่อสถานะ
 - ไม่แก้ Message Core, WebRTC, Zoom หรือ Discovery
+
+
+## v0.11.22 Native Direct
+Control Center รองรับ Native Sender แบบ Direct โดยเพิ่ม Stream ID หรือวาง VDO.Ninja Viewer URL หนึ่งครั้ง ระบบจะจำไว้ใน localStorage และ receiver จะละ room= สำหรับกล้อง Direct. Auto Discovery เดิมยังใช้กับ Web Sender ตามปกติ.

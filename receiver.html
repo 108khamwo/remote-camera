@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>OBS Smart Receiver v0.11.20</title>
+  <title>OBS Smart Receiver v0.11.22</title>
   <style>
     html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;color:#fff;font:14px system-ui}
     #vdo{position:fixed;inset:0;width:100%;height:100%;border:0;background:#000}
@@ -23,13 +23,15 @@
   const buffer=Math.max(0,Math.min(1000,parseInt(p.get('buffer')||'200',10)||0));
   const codec=(p.get('codec')||'h264').toLowerCase();
   const preview=p.get('preview')==='1';
+  const direct=p.get('direct')==='1';
   const smart=p.get('smart')==='1';
   const iframe=document.getElementById('vdo');
   const boot=document.getElementById('boot');
 
   const u=new URL('https://vdo.ninja/');
-  u.searchParams.set('room',room);
+  if(!direct)u.searchParams.set('room',room);
   u.searchParams.set('view',stream);
+  if(direct)u.searchParams.set('password','false');
   u.searchParams.set('videobitrate',String(maxBitrate));
   u.searchParams.set('scale','100');
   u.searchParams.set('buffer',String(buffer));
@@ -97,7 +99,7 @@
     return 'good';
   }
   function postParent(extra={}){
-    const payload={type:'remote-camera-receiver-stats',smart,room,stream,currentBitrate,maxBitrate,minBitrate,stepIndex,steps,state:lastStats?.state||'waiting',...lastStats,...extra};
+    const payload={type:'remote-camera-receiver-stats',smart,direct,room,stream,currentBitrate,maxBitrate,minBitrate,stepIndex,steps,state:lastStats?.state||'waiting',...lastStats,...extra};
     try{if(parent!==window)parent.postMessage(payload,'*')}catch{}
   }
   function setTarget(kbps,reason){
