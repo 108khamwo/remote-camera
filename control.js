@@ -364,11 +364,13 @@ function sendControlMessage(text,{broadcast=false}={}){
   }catch(e){log(`ส่งข้อความไม่สำเร็จ: ${e.message}`);return false}
 }
 function collectListing(value,out=[],depth=0){
-  if(depth>5||value==null)return out;
+  if(depth>6||value==null)return out;
   if(Array.isArray(value)){value.forEach(v=>collectListing(v,out,depth+1));return out}
   if(typeof value!=='object')return out;
-  const id=cleanId(value.streamID||value.streamId||value.streamid||value.stream||'');
-  if(id.startsWith('cam_'))out.push({id,label:value.label||value.name||'',uuid:value.uuid||value.UUID||'',online:true});
+  let rawId=cleanId(value.streamID||value.streamId||value.streamid||value.stream||'');
+  const isPresence=rawId.startsWith('presence_cam_');
+  if(isPresence)rawId=rawId.slice('presence_'.length);
+  if(rawId.startsWith('cam_'))out.push({id:rawId,label:value.label||value.name||'',uuid:value.uuid||value.UUID||'',online:true,presence:isPresence});
   Object.entries(value).forEach(([k,v])=>{if(!['streamID','streamId','streamid','stream','label','name','uuid','UUID'].includes(k))collectListing(v,out,depth+1)});
   return out;
 }
@@ -411,10 +413,8 @@ function upsertAutoDirect(item){
   return true;
 }
 function handleListing(e){
-  // v0.11.22: Room listing is now a real auto-discovery source for Native Direct.
-  // Native Sender v0.3.4 keeps direct video publishing, but joins this room only
-  // to announce its Stream ID. Web Senders are later upgraded to transport=room
-  // when their telemetry arrives, so this does not break the existing PWA flow.
+  // v0.11.23: Native video stays Direct. A separate data-only Presence peer
+  // announces presence_cam_* in the room; normalize it back to cam_* here.
   const list=collectListing(e?.detail??e);
   let changed=false;
   for(const item of list){
@@ -427,14 +427,13 @@ function handleListing(e){
 async function startNativePresenceDiscovery(){
   if(nativePresenceVdo)return;
   const room=$('#room').value;
-  // Native Sender v0.3.4 joins the plain/raw room while keeping video Direct.
-  // Use a second signaling-only SDK connection with password:false so this scanner
-  // does not interfere with the existing encrypted Data Hub used by Web Senders.
+  // Native Sender v0.3.5 uses a separate SDK presence peer. This scanner joins
+  // the same plain presence room without touching the existing encrypted Data Hub.
   nativePresenceVdo=new VDONinjaSDK({autoRecover:true,autoRelay:true,salt:'vdo.ninja',label:'Native Presence Scanner'});
   nativePresenceVdo.addEventListener('listing',handleListing);
-  nativePresenceVdo.addEventListener('peerListing',handleListing);
   nativePresenceVdo.addEventListener('videoaddedtoroom',handleListing);
-  nativePresenceVdo.addEventListener('streamAdded',handleListing);
+  nativePresenceVdo.addEventListener('someonejoined',handleListing);
+  nativePresenceVdo.addEventListener('peerConnected',handleListing);
   nativePresenceVdo.addEventListener('connected',()=>log('Native Presence: signaling connected'));
   nativePresenceVdo.addEventListener('connectionRecovered',()=>log('Native Presence: recovered'));
   nativePresenceVdo.addEventListener('connectionFailed',e=>log(`Native Presence connection failed${e?.detail?.reason?`: ${e.detail.reason}`:''}`));
@@ -620,4 +619,4 @@ $('#copy').onclick=async()=>{if(!$('#obsUrl').value)return;await navigator.clipb
 setInterval(markOffline,2000);
 window.addEventListener('beforeunload',()=>{try{discoveryCtl?.stop?.()}catch{};try{discoveryVdo?.stopPublishing?.()}catch{};try{discoveryVdo?.disconnect?.()}catch{};try{nativePresenceVdo?.disconnect?.()}catch{}});
 startDiscovery().catch(e=>{log(`Auto Discovery error: ${e.message}`);$('#discoveryStatus').innerHTML='<b>เชื่อมไม่สำเร็จ</b><span>กด “ค้นหากล้องใหม่” เพื่อลองอีกครั้ง</span>'});
-log(`v0.11.22 พร้อม — Native Direct Auto Discovery ผ่าน Room Listing + Data Hub เดิม • Offline grace ${OFFLINE_MS/1000}s`);
+log(`v0.11.23 พร้อม — Native Direct + แยก Presence Auto Discovery • Offline grace ${OFFLINE_MS/1000}s`);

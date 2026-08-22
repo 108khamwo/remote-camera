@@ -565,7 +565,7 @@ body.fullscreen-active .sender-call-controls{flex:none}
   .home-obs-help strong{display:block;margin-bottom:4px}
 }
 
-/* v0.11.22 Native Direct + Auto Discovery */
+/* v0.11.23 Native Direct + Presence Auto Discovery */
 .native-direct-box{display:grid;gap:8px;padding:12px;border:1px solid rgba(255,255,255,.09);border-radius:12px;background:rgba(255,255,255,.025)}
 .native-direct-add{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}
 .native-direct-add input{min-width:0}

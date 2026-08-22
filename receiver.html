@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>OBS Smart Receiver v0.11.22</title>
+  <title>OBS Smart Receiver v0.11.23</title>
   <style>
     html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;color:#fff;font:14px system-ui}
     #vdo{position:fixed;inset:0;width:100%;height:100%;border:0;background:#000}
@@ -39,7 +39,10 @@
   u.searchParams.set('obsfix','1');
   u.searchParams.set('cleanoutput','');
   u.searchParams.set('solo','');
-  if(codec)u.searchParams.set('codec',codec);
+  u.searchParams.set('autoplay','');
+  // Native Direct publisher negotiates its own codec. Forcing H.264 here can
+  // leave OBS waiting forever on phones that published another codec.
+  if(codec && !direct)u.searchParams.set('codec',codec);
   if(preview)u.searchParams.set('mutespeaker','');
   iframe.src=u.toString();
   iframe.addEventListener('load',()=>{boot.style.display='none';setTimeout(()=>setTarget(currentBitrate,'เริ่มต้น'),900)});

@@ -1,50 +1,18 @@
-# ระบบ Live Streaming ระยะไกลผ่านมือถือ v0.11.22
+# ระบบ Live Streaming ระยะไกลผ่านมือถือ v0.11.23
 
-## v0.11.22 Auto Discovery Native Direct
+## v0.11.23 — Native Direct + Presence Auto Discovery
 
-- รองรับ Native Sender v0.3.4+ แบบอัตโนมัติ: เมื่อมือถือเริ่มส่งภาพ Stream ID จะถูกพบจาก VDO.Ninja room listing และสร้างปุ่มกล้องใน Control Center เอง
-- Native video ยังดูแบบ Direct (`?view=StreamID`) ไม่บังคับให้ video ใช้ room
-- ถ้าเป็น Web Sender เดิม ระบบ telemetry จะยืนยันแล้วเปลี่ยน transport กลับเป็น room ตามเดิม
-- ช่องเพิ่ม Native Direct ด้วยมือยังคงไว้เป็น fallback
+- แก้ Auto Discovery ของ Native Sender: Control Center รับ `presence_cam_...` จากช่อง Presence แล้วแปลงกลับเป็น Stream ID `cam_...` อัตโนมัติ
+- Native Sender v0.3.5 ไม่เอาวิดีโอเข้า room อีกต่อไป จึงไม่รบกวน Direct media
+- เพิ่ม event fallback สำหรับ listing / videoaddedtoroom / someonejoined / peerConnected
+- OBS Smart Receiver: สำหรับ Native Direct จะไม่บังคับ codec H.264 และเพิ่ม autoplay เพื่อลดอาการหมุนค้าง
+- Web Sender / Data Hub / ระบบข้อความเดิมยังคงเหมือนเดิม
 
+## ใช้งาน
 
-## v0.11.22
-- Control Center: เมื่อมีข้อความจาก Sender เข้ามาและแผงข้อความยังปิดอยู่ ระบบเปิดแผงข้อความให้อัตโนมัติทันที
-- เลื่อนไปยังข้อความล่าสุดโดยไม่โฟกัสช่องพิมพ์ เพื่อไม่ให้คีย์บอร์ดเด้งเอง
-- ไม่เปลี่ยน Message/Data Channel core ที่ใช้งานได้อยู่
+1. อัปโหลดไฟล์ชุด v0.11.23 ทับ GitHub Pages เดิม
+2. เปิด Control Center แล้วกด Refresh หนึ่งครั้งหลัง deploy
+3. เปิด Native Sender v0.3.5 และกดเริ่มส่งภาพ
+4. กล้องควรขึ้นในแถบเลือกกล้องอัตโนมัติ โดยไม่ต้องกรอก Stream ID
 
-
-- Message Core restored from v0.11.2 (known-good baseline).
-- Control primary message action now broadcasts to all cameras; Enter also sends to all.
-- “Send only this camera” remains available as a secondary action.
-- Fullscreen code is isolated in `fullscreen.js` so it does not modify the message core.
-- Sender top icons use one consistent SVG line-icon set.
-- Network-first service worker for active development.
-
-
-## v0.11.17
-- Rebuilt messaging as one Control data publisher with every Sender explicitly viewing it.
-- Camera presence/telemetry now arrives over the same deterministic data channel.
-- Video/OBS stays independent.
-- Send All remains the primary action; selected-camera messages are filtered by targetStream.
-
-### v0.11.17
-- iOS: เอาปุ่ม Fullscreen ออกทั้งหมดและไม่ผูก Fullscreen API เพื่อไม่ให้กระทบ Sender
-- ปรับ Message Sheet บน iOS ให้ Quick Reply 3 ปุ่มแสดงครบ ไม่แหว่ง และรองรับ Safe Area/แนวนอน
-- ไม่เปลี่ยน Message/Data Channel core จาก v0.11.9
-
-
-## v0.11.17
-- Control Center ตัด dropdown เลือกกล้องที่ซ้ำออกจากหน้าจอ (เก็บ hidden ไว้เพื่อ compatibility)
-- ใช้ปุ่มกล้องออนไลน์ (chips) เป็นตัวเลือกกล้องหลักเพียงแบบเดียว
-- เพิ่มปุ่ม รีเฟรช ที่เห็นได้ทันทีเพื่อค้นหากล้องใหม่
-- ปุ่มล้าง Offline และ Room ยังคงซ่อนใน จัดการกล้อง
-
-
-### v0.11.17
-- แก้ไอคอนไมโครโฟน Mute ซ้อนกัน โดยบังคับให้แสดงเพียง glyph เดียวต่อสถานะ
-- ไม่แก้ Message Core, WebRTC, Zoom หรือ Discovery
-
-
-## v0.11.22 Native Direct
-Control Center รองรับ Native Sender แบบ Direct โดยเพิ่ม Stream ID หรือวาง VDO.Ninja Viewer URL หนึ่งครั้ง ระบบจะจำไว้ใน localStorage และ receiver จะละ room= สำหรับกล้อง Direct. Auto Discovery เดิมยังใช้กับ Web Sender ตามปกติ.
+ถ้ายังต้องการ fallback สามารถเพิ่ม Native Direct ด้วย Stream ID หรือลิงก์ `?view=` ในเมนูจัดการกล้องได้เหมือนเดิม
