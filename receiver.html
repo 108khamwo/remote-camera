@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>OBS Smart Receiver v0.11.24</title>
+  <title>OBS Smart Receiver v0.11.25</title>
   <style>
     html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;color:#fff;font:14px system-ui}
     #vdo{position:fixed;inset:0;width:100%;height:100%;border:0;background:#000}
@@ -21,7 +21,10 @@
   const maxBitrate=Math.max(800,Math.min(20000,parseInt(p.get('bitrate')||'8000',10)||8000));
   const minBitrate=Math.max(600,Math.min(maxBitrate,parseInt(p.get('minbitrate')||'1800',10)||1800));
   const buffer=Math.max(0,Math.min(1000,parseInt(p.get('buffer')||'200',10)||0));
-  const codec=(p.get('codec')||'h264').toLowerCase();
+  // v0.11.25: if codec appears more than once, the last valid value wins.
+  // This also lets Native Direct iOS explicitly request VP8.
+  const codecValues=p.getAll('codec').map(v=>String(v||'').toLowerCase()).filter(v=>['h264','vp8','vp9','av1'].includes(v));
+  const codec=codecValues.length?codecValues[codecValues.length-1]:'';
   const preview=p.get('preview')==='1';
   const direct=p.get('direct')==='1';
   const smart=p.get('smart')==='1';
@@ -40,9 +43,9 @@
   u.searchParams.set('cleanoutput','');
   u.searchParams.set('solo','');
   u.searchParams.set('autoplay','');
-  // Native Direct publisher negotiates its own codec. Forcing H.264 here can
-  // leave OBS waiting forever on phones that published another codec.
-  if(codec && !direct)u.searchParams.set('codec',codec);
+  // v0.11.25: propagate an explicitly requested codec even in Native Direct mode.
+  // iOS Native uses VP8 because its H.264 path was observed to freeze after a few seconds.
+  if(codec)u.searchParams.set('codec',codec);
   if(preview)u.searchParams.set('mutespeaker','');
   iframe.src=u.toString();
   iframe.addEventListener('load',()=>{boot.style.display='none';setTimeout(()=>setTarget(currentBitrate,'เริ่มต้น'),900)});

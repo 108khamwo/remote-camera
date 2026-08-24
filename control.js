@@ -89,6 +89,16 @@ function markOffline(){
 function onlineCount(){return cameras.filter(c=>c.transport!=='direct'&&c.online).length}
 function directCount(){return cameras.filter(c=>c.transport==='direct').length}
 function cameraTransport(id=activeId()){return cameras.find(c=>c.id===cleanId(id))?.transport||'room'}
+function isIosNativeStream(id){
+  id=cleanId(id);
+  const c=cameras.find(x=>x.id===id);
+  return id.includes('_ios_')||/ios/i.test(String(c?.platform||''));
+}
+function receiverCodecFor(id,transport){
+  // v0.11.25: iOS Native H.264 freezes while VP8 stays stable.
+  if(transport==='direct'&&isIosNativeStream(id))return 'vp8';
+  return $('#codec').value||'';
+}
 
 function receiverUrl({preview=false,streamId=null}={}){
   const id=cleanId(streamId??activeId());
@@ -100,7 +110,8 @@ function receiverUrl({preview=false,streamId=null}={}){
   u.searchParams.set('stream',id);
   u.searchParams.set('bitrate',$('#bitrate').value);
   u.searchParams.set('buffer',$('#buffer').value);
-  if($('#codec').value)u.searchParams.set('codec',$('#codec').value);
+  const effectiveCodec=receiverCodecFor(id,transport);
+  if(effectiveCodec)u.searchParams.set('codec',effectiveCodec);
   if(isSmart()){u.searchParams.set('smart','1');u.searchParams.set('minbitrate',$('#smartMin').value)}
   if(preview)u.searchParams.set('preview','1');
   return u.href;
