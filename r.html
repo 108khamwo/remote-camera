@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Remote Camera OBS</title>
+  <style>html,body{margin:0;width:100%;height:100%;background:#000;color:#fff;font:14px system-ui,sans-serif}#status{position:fixed;inset:0;display:grid;place-items:center;text-align:center;padding:24px;box-sizing:border-box}</style>
+</head>
+<body>
+<div id="status">กำลังเปิด OBS Receiver…</div>
+<script>
+(()=>{
+  const p=new URLSearchParams(location.search);
+  const clean=v=>String(v||'').trim().replace(/[^\w]/g,'_');
+  const stream=clean(p.get('s'));
+  if(!stream){document.getElementById('status').textContent='ลิงก์ OBS ไม่ถูกต้อง: ไม่พบ Stream ID';return}
+
+  // Must match systemRoom() in control.js/sender.js for GitHub Pages project hosting.
+  const host=(location.hostname||'remote').replace(/[^\w]/g,'_');
+  const project=(location.pathname.split('/').filter(Boolean)[0]||'remote_camera').replace(/[^\w]/g,'_');
+  const room=clean(`rc_${host}_${project}`);
+
+  const direct=p.get('d')==='1';
+  const rawBitrate=parseInt(p.get('b')||'8000',10);
+  const rawBuffer=parseInt(p.get('u')??'200',10);
+  const bitrate=Math.max(800,Math.min(20000,Number.isFinite(rawBitrate)?rawBitrate:8000));
+  const buffer=Math.max(0,Math.min(1000,Number.isFinite(rawBuffer)?rawBuffer:200));
+  const smart=p.get('m')==='1';
+  const rawMinBitrate=parseInt(p.get('n')||'1800',10);
+  const minBitrate=Math.max(600,Math.min(bitrate,Number.isFinite(rawMinBitrate)?rawMinBitrate:1800));
+  const codecCode=String(p.get('c')??'h').toLowerCase();
+  const codec=codecCode==='a'?'':codecCode==='8'?'vp8':codecCode==='9'?'vp9':codecCode==='h'?'h264':codecCode;
+
+  const u=new URL('receiver.html',location.href);
+  if(direct)u.searchParams.set('direct','1');else u.searchParams.set('room',room);
+  u.searchParams.set('stream',stream);
+  u.searchParams.set('bitrate',String(bitrate));
+  u.searchParams.set('buffer',String(buffer));
+  if(codec)u.searchParams.set('codec',codec);
+  if(smart){u.searchParams.set('smart','1');u.searchParams.set('minbitrate',String(minBitrate))}
+  location.replace(u.href);
+})();
+</script>
+</body>
+</html>

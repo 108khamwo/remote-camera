@@ -1,3 +1,35 @@
+# ระบบ Live Streaming ระยะไกลผ่านมือถือ v0.11.26
+
+## v0.11.26 — Compact OBS Link
+
+- เพิ่ม `r.html` สำหรับลิงก์ OBS แบบสั้นบน Static Hosting / GitHub Pages
+- Control Center แสดงและคัดลอกลิงก์สั้นอัตโนมัติ ทั้งกล้องที่เลือกและรายการ “OBS ทุกกล้อง”
+- ไม่ใช้ bit.ly / TinyURL / API ภายนอก และไม่ต้องมีฐานข้อมูลหรือ Backend
+- ค่า Room ถูกสร้างจากโดเมน/ชื่อโปรเจกต์เหมือนระบบเดิม และ `r.html` จะขยายค่ากลับไป `receiver.html` ภายในเครื่อง OBS
+- รองรับ Direct, Bitrate, Buffer, Codec, Smart Network และ Smart minimum bitrate ครบเหมือน URL เดิม
+
+ตัวอย่างรูปแบบใหม่:
+`https://example.github.io/project/r.html?s=cam_android_a1b2c3d4&d=1`
+
+---
+
+# ระบบ Live Streaming ระยะไกลผ่านมือถือ v0.11.25
+
+## v0.11.25 — iOS VP8 Receiver Fix
+
+รุ่นนี้ต่อยอดจาก v0.11.24 โดยแก้เฉพาะเส้นทางรับภาพ iOS ที่ทดสอบแล้วว่าการบังคับ VP8 ช่วยแก้อาการ Viewer/OBS ค้างหลังเริ่มส่งภาพไม่กี่วินาที
+
+ไฟล์ runtime ที่แก้ใน v0.11.25:
+- `receiver.html` — ส่งค่า codec ต่อให้ VDO.Ninja ใน direct mode และรองรับค่า codec เดียวที่ชัดเจน
+- `control.js` — เลือก VP8 อัตโนมัติสำหรับ stream iOS (`cam_ios_...`) โดยไม่บังคับ Android
+- `control.html` — อัปเดตส่วนควบคุม/เวอร์ชันที่เกี่ยวข้อง
+
+ไฟล์อื่นยังใช้ฐาน v0.11.24 เดิม
+
+---
+
+## เอกสารฐาน v0.11.24 เดิม
+
 # ระบบ Live Streaming ระยะไกลผ่านมือถือ v0.11.24
 
 ## v0.11.24 — Native Direct + Auto Discovery + Native Telemetry

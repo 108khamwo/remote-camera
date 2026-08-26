@@ -116,6 +116,32 @@ function receiverUrl({preview=false,streamId=null}={}){
   if(preview)u.searchParams.set('preview','1');
   return u.href;
 }
+
+// v0.11.26: compact OBS link for static hosting.
+// r.html expands these compact parameters back to receiver.html locally,
+// so no external URL shortener, database, API key, or server-side service is required.
+function compactObsUrl({streamId=null}={}){
+  const id=cleanId(streamId??activeId());
+  if(!id)return '';
+  const transport=cameraTransport(id);
+  const effectiveCodec=receiverCodecFor(id,transport);
+  const bitrate=String($('#bitrate').value||'8000');
+  const buffer=String($('#buffer').value||'200');
+  const minBitrate=String($('#smartMin').value||'1800');
+  const parts=[`s=${encodeURIComponent(id)}`];
+  if(transport==='direct')parts.push('d=1');
+  if(bitrate!=='8000')parts.push(`b=${encodeURIComponent(bitrate)}`);
+  if(buffer!=='200')parts.push(`u=${encodeURIComponent(buffer)}`);
+  // H.264 is the compact receiver default. Explicitly encode Auto/VP8/VP9.
+  if(effectiveCodec!=='h264'){
+    const code=effectiveCodec===''?'a':effectiveCodec==='vp8'?'8':effectiveCodec==='vp9'?'9':effectiveCodec;
+    parts.push(`c=${encodeURIComponent(code)}`);
+  }
+  if(isSmart()){parts.push('m=1');if(minBitrate!=='1800')parts.push(`n=${encodeURIComponent(minBitrate)}`)}
+  const u=new URL('r.html',location.href);
+  u.search=parts.join('&');
+  return u.href;
+}
 function renderRegistry(preferred=null,{force=false}={}){
   const ordered=[...cameras].sort((a,b)=>(Number(b.online)-Number(a.online))||a.name.localeCompare(b.name)||a.id.localeCompare(b.id));
   const wanted=cleanId(preferred||selectedCameraId||$('#streamId').value||$('#cameraSelect').value);
@@ -169,7 +195,7 @@ function renderMultiObs(){
     const row=document.createElement('div');row.className='multi-obs-row';
     const name=document.createElement('div');name.innerHTML=`${c.transport==='direct'?'🔵':(c.online?'🟢':'⚫')} ${c.name}`;
     const id=document.createElement('div');id.className='mini';id.textContent=c.transport==='direct'?`Native Direct • ${c.id}`:(c.platform||c.id);
-    const input=document.createElement('input');input.readOnly=true;input.value=receiverUrl({streamId:c.id});
+    const input=document.createElement('input');input.readOnly=true;input.value=compactObsUrl({streamId:c.id});
     const copy=document.createElement('button');copy.type='button';copy.textContent='คัดลอก';copy.onclick=async()=>{await navigator.clipboard.writeText(input.value);copy.textContent='แล้ว';setTimeout(()=>copy.textContent='คัดลอก',900)};
     row.append(name,id,input,copy);box.appendChild(row)
   });
@@ -194,7 +220,7 @@ function updateLiveStatusBase(){
   }
 }
 function updateObs(){
-  $('#obsUrl').value=receiverUrl();
+  $('#obsUrl').value=compactObsUrl();
   updateLiveStatusBase();
   $('#smartMinWrap').classList.toggle('hidden',!isSmart());
   $('#smartFallbackWrap').classList.toggle('hidden',!isSmart());
