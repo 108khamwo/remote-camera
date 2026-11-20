@@ -908,18 +908,64 @@ async function setZoom(value){
   setSmoothZoomTarget(value);
 }
 
+function videoSettingsMatchPreset(settings,presetKey){
+  const p=PRESETS[presetKey];if(!p)return false;
+  const w=Number(settings?.width||0),h=Number(settings?.height||0);
+  if(!w||!h)return false;
+  // Some mobile cameras report rotated dimensions when held vertically.
+  return (Math.abs(w-p.w)<=16&&Math.abs(h-p.h)<=16)||
+         (Math.abs(h-p.w)<=16&&Math.abs(w-p.h)<=16);
+}
+function actualVideoSize(track){
+  const s=track?.getSettings?.()||{};
+  return `${s.width||'?'}×${s.height||'?'}`;
+}
 async function setQualityPreset(value,reason='Remote'){
   if(!PRESETS[value])throw new Error(`ไม่พบ preset ${value}`);
-  if($('#quality').value===value){
+  // A racing camera switch must not count as a successful quality change.
+  for(let i=0;openingCamera&&i<75;i++)await sleep(80);
+  if(openingCamera)throw new Error('กล้องกำลังสลับอยู่ กรุณาลองใหม่');
+  const previous=$('#quality').value;
+  const firstTrack=cameraStream?.getVideoTracks?.()[0];
+  if(previous===value&&firstTrack&&videoSettingsMatchPreset(firstTrack.getSettings?.(),value)){
     smartProfile=reason;$('#statSmartProfile').textContent=smartProfile;
     if(FIXED_PRESET_KEY)localStorage.setItem(FIXED_PRESET_KEY,value);
     sendTelemetry();return;
   }
-  const previous=$('#quality').value;
   $('#quality').value=value;
   try{
-    if(cameraStream)await openCamera({facing:currentFacing,deviceId:explicitDeviceId});
-  }catch(e){$('#quality').value=previous;throw e}
+    if(firstTrack?.readyState==='live'&&typeof firstTrack.applyConstraints==='function'){
+      const p=PRESETS[value];
+      try{
+        // This changes capture settings in place, keeping the WebRTC video track
+        // and microphone untouched whenever the browser supports it.
+        await firstTrack.applyConstraints({
+          width:{exact:p.w},height:{exact:p.h},
+          frameRate:{ideal:p.fps,max:p.fps}
+        });
+        if(videoSettingsMatchPreset(firstTrack.getSettings?.(),value)){
+          try{firstTrack.contentHint=p.hint}catch{}
+          updateCameraStatus(firstTrack);
+          log(`เปลี่ยนความละเอียดบน Video Track เดิม: ${actualVideoSize(firstTrack)}`);
+        }else log(`applyConstraints ไม่ตรง Preset: ${actualVideoSize(firstTrack)}`);
+      }catch(e){log(`applyConstraints: ${e.name||'Error'} ${e.message||''}`)}
+    }
+    const track=cameraStream?.getVideoTracks?.()[0];
+    if(cameraStream&&!videoSettingsMatchPreset(track?.getSettings?.(),value)){
+      // Android/Firefox may need a fresh capture track for mode changes.
+      await openCamera({facing:currentFacing,deviceId:explicitDeviceId});
+    }
+    const actualTrack=cameraStream?.getVideoTracks?.()[0];
+    if(actualTrack&&!videoSettingsMatchPreset(actualTrack.getSettings?.(),value)){
+      const got=actualVideoSize(actualTrack);
+      throw new Error(`กล้องส่งจริง ${got} ไม่ตรง ${PRESETS[value].w}×${PRESETS[value].h}`);
+    }
+  }catch(e){
+    // Keep the selected *request* for troubleshooting, but never ACK success.
+    // A capture failure is reported to Control with the actual dimensions.
+    log(`Quality ไม่สำเร็จ: ${e.message}`);
+    sendTelemetry();throw e;
+  }
   if(FIXED_PRESET_KEY)localStorage.setItem(FIXED_PRESET_KEY,value);
   smartProfile=reason;
   $('#statSmartProfile').textContent=smartProfile;
@@ -966,15 +1012,19 @@ async function startPublishing(){
 
 
 function pruneProcessedCommands(){
-  const now=Date.now();for(const [k,t] of processedRemoteCommands){if(now-t>15000)processedRemoteCommands.delete(k)}
+  const now=Date.now();for(const [k,v] of processedRemoteCommands){if(now-(v?.ts||0)>30000)processedRemoteCommands.delete(k)}
 }
 function sendRemoteAck(d,sourceUuid,{ok=true,message=''}={}){
-  if(!vdo||!d?.commandId)return;
+  if(!d?.commandId)return;
   const ack={type:'remote-camera-ack',commandId:d.commandId,command:d.command,ok,message,ts:Date.now(),streamID:normId($('#streamId').value),deviceID:DEVICE_ID,currentFacing,zoomCurrent:zoomState.current};
-  try{
-    if(sourceUuid)vdo.sendData(ack,{uuid:sourceUuid,allowFallback:true,preference:'any'});
-    else vdo.sendData(ack);
-  }catch{try{vdo.sendData(ack)}catch{}}
+  // Control Center listens on its own data-only SDK (remote-camera-data-v1),
+  // NOT the video publisher SDK (vdo.ninja). Reply on the matching channel.
+  if(messageVdo){
+    try{messageVdo.sendData(ack,{preference:'any',allowFallback:true})}
+    catch(e){log(`ส่ง ACK ผ่าน Data Hub ไม่ได้: ${e.message}`)}
+  }
+  // Keep legacy video-SDK ACK for compatibility with older receivers.
+  if(vdo){try{vdo.sendData(ack,{preference:'any',allowFallback:true})}catch{}}
 }
 
 async function handleRemote(d,sourceUuid=''){
@@ -984,8 +1034,13 @@ async function handleRemote(d,sourceUuid=''){
   if(d?.type!=='remote-camera')return;
   if(d.targetStream && normId(d.targetStream)!==normId($('#streamId').value))return;
   pruneProcessedCommands();
-  if(d.commandId&&processedRemoteCommands.has(d.commandId)){sendRemoteAck(d,sourceUuid,{ok:true,message:'duplicate acknowledged'});return}
-  if(d.commandId)processedRemoteCommands.set(d.commandId,Date.now());
+  if(d.commandId&&processedRemoteCommands.has(d.commandId)){
+    const prior=processedRemoteCommands.get(d.commandId);
+    // Never claim success while the first attempt is still opening the camera.
+    if(prior?.done)sendRemoteAck(d,sourceUuid,{ok:prior.ok,message:prior.message});
+    return;
+  }
+  if(d.commandId)processedRemoteCommands.set(d.commandId,{ts:Date.now(),done:false});
   else {if(d.ts&&d.ts===lastRemoteTs)return;if(d.ts)lastRemoteTs=d.ts}
   $('#statRemote').textContent=`คำสั่ง: ${d.command}`;log(`Remote: ${d.command}`);
   try{
@@ -999,9 +1054,14 @@ async function handleRemote(d,sourceUuid=''){
     else if(d.command==='quality'&&d.value)await setQualityPreset(d.value,d.reason||'Remote quality');
     else known=false;
     if(!known)throw new Error(`ไม่รู้จักคำสั่ง ${d.command}`);
+    if(d.commandId)processedRemoteCommands.set(d.commandId,{ts:Date.now(),done:true,ok:true,message:''});
     sendRemoteAck(d,sourceUuid,{ok:true});
     setTimeout(sendTelemetry,80);
-  }catch(e){log(`Remote error: ${e.message}`);sendRemoteAck(d,sourceUuid,{ok:false,message:e.message})}
+  }catch(e){
+    log(`Remote error: ${e.message}`);
+    if(d.commandId)processedRemoteCommands.set(d.commandId,{ts:Date.now(),done:true,ok:false,message:e.message});
+    sendRemoteAck(d,sourceUuid,{ok:false,message:e.message});
+  }
 }
 async function stopAll(){
   if(messageRetryTimer){clearInterval(messageRetryTimer);messageRetryTimer=null}
@@ -1114,9 +1174,9 @@ document.addEventListener('visibilitychange',()=>{
   }
 });
 window.addEventListener('beforeunload',()=>stopAll());
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=01131').catch(()=>{});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=01132').catch(()=>{});
 $('#statHint').textContent=q().hint;
 $('#statSmartProfile').textContent=smartProfile;
 initIdentity();updateSimpleStatus();updateMicUi();updateMicGainUi();updateMicNoiseUi();
 $('#newStreamId').onclick=generateNewStreamId;
-log(`v0.11.31 พร้อมใช้งาน — Receiver controlled video preset / Mic Volume & Noise Reduction / Control Data Hub — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
+log(`v0.11.32 พร้อมใช้งาน — Receiver controlled video preset / Mic Volume & Noise Reduction / Control Data Hub — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);

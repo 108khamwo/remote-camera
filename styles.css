@@ -645,3 +645,6 @@ body.fullscreen-active .sender-call-controls{flex:none}
 @media(max-width:580px){.perma-url-line{grid-template-columns:1fr auto}.perma-url-line .mini{grid-column:1/-1}.permanent-link-card{padding:12px}.perma-slot-list{grid-template-columns:1fr}}
 
 #senderQualityGroup[hidden],#senderQualityControlled[hidden],#fixedNetworkNote[hidden]{display:none!important}
+
+#retryVideoPreset[hidden]{display:none!important}
+.quality-retry{align-self:flex-start;margin-top:4px;padding:6px 10px;font-size:12px}

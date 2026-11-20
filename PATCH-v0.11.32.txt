@@ -1,0 +1,14 @@
+Remote Camera v0.11.32 — QUALITY SYNC FIX
+
+- Fix Control command ACK via matching data-only SDK channel.
+- Route control commands to data peer UUID (or broadcast + targetStream filter); no cross-SDK streamID addressing.
+- Use real camera getSettings() to confirm 720p/1080p, not just selected preset.
+- Apply exact dimensions on existing MediaStreamTrack first to avoid WebRTC reconnect; fallback to camera re-acquire when needed.
+- Avoid duplicate success ACK for commands still running.
+- Show real resolution and retry only when mismatch or no response.
+- Keep permanent sender/OBS URLs unchanged.
+- Fixed OBS network values unchanged (Smart 6 Mbps / 350 ms).
+
+Deployment: replace all files in existing static host folder; update Control and Sender and refresh both browsers; restart OBS Browser Source cache if needed.
+Quality changes require Control Center to be open and its data channel connected.
+Compatibility: older deployed senders must be refreshed for v0.11.32 ACK and resolution verification.
