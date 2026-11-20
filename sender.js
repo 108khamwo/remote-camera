@@ -1,4 +1,4 @@
-/* Remote Camera v0.11.39 — compact landscape sender + iOS 30fps */
+/* Remote Camera v0.11.40 — AUDIO FIRST / stable direct mic / worklet gate */
 const $=s=>document.querySelector(s); const logEl=$('#log');
 function log(m){const t=new Date().toLocaleTimeString();logEl.textContent+=`[${t}] ${m}\n`;logEl.scrollTop=logEl.scrollHeight}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -8,7 +8,11 @@ const MIC_GAIN_KEY='remoteCamMicGainV1',MIC_NOISE_KEY='remoteCamMicNoiseV1';
 const savedMicGain=localStorage.getItem(MIC_GAIN_KEY);
 let micGainPercent=savedMicGain===null?100:Math.max(0,Math.min(200,Number(savedMicGain)||0));
 let micNoiseSuppressionEnabled=localStorage.getItem(MIC_NOISE_KEY)==='1';
-let micProcessor=null; // Browser Web Audio: raw capture → gain → outgoing WebRTC track
+let micProcessor=null; // Direct mic when possible; Web Audio only for requested processing.
+let micOutputSyncPromise=null,micOutputSyncPending=false,micForceDirect=false;
+let micHealthTimer=null,micHealthRunning=false,lastMicRecoveryAt=0,lastAudioResumeAt=0;
+let micSessionGeneration=0;
+const AUDIO_HEALTH_CHECK_MS=4000, MIC_RECOVERY_COOLDOWN_MS=30000;
 
 const processedRemoteCommands=new Map();
 let explicitDeviceId='', openingCamera=false;
@@ -336,18 +340,99 @@ function updateMicNoiseUi(message=''){
   const native=nativeMicNoiseState();
   const text=message || (!live?'เปิดเมื่อเริ่มใช้ไมค์':
     native===true?'เปิด • ระบบไมค์':
-    micProcessor&&!micProcessor.fallback?'เปิด • กรองเสียงเบาช่วงไม่พูด':
-    'เปิด • รอการยืนยันจากเบราว์เซอร์');
+    micProcessor?.gateWorklet?'เปิด • กรองเสียงเบาช่วงไม่พูด':
+    micProcessor?.workletState==='loading'?'กำลังเปิดตัวกรองเสียง…':
+    'เบราว์เซอร์ไม่รองรับตัวกรองเสียงสำรอง');
   status.textContent=text;status.hidden=!text;
+}
+// 0.11.40: the capture output follows one of two paths:
+// 1) Native microphone track (100% gain; no software gate): resistant to
+//    AudioContext suspension when iOS/Firefox throttles the page.
+// 2) Web Audio track (non-default gain or real-time gate enabled).
+// Never process noise gating in requestAnimationFrame. RAF is UI-only and can pause.
+function desiredMicTrack(p){
+  if(!p)return null;
+  if(p.fallback||!p.processedTrack)return p.rawTrack;
+  if(micForceDirect)return p.rawTrack;
+  const requiresGate=softwareNoiseActive(p.rawTrack)&&!!p.gateWorklet;
+  return (micGainPercent===100&&!requiresGate)?p.rawTrack:p.processedTrack;
+}
+function micUsesProcessor(p=micProcessor){return !!p&&p.outgoingTrack===p.processedTrack}
+async function performMicOutputSync(){
+  if(micSwitchPromise)await micSwitchPromise;
+  const p=micProcessor;
+  if(!p||p.disposed)return;
+  const target=desiredMicTrack(p),old=p.outgoingTrack;
+  if(!target||!old||target===old)return;
+  if(isPublishing&&vdo)await vdo.replaceTrack(old,target);
+  // Guard a stale mic or stopped session after async replacement.
+  if(p!==micProcessor||p.disposed)return;
+  if(outStream){
+    if(outStream.getAudioTracks().includes(old))outStream.removeTrack(old);
+    if(!outStream.getAudioTracks().includes(target))outStream.addTrack(target);
+  }
+  p.outgoingTrack=target;
+  updateMicUi();
+  log(`Audio path: ${target===p.rawTrack?'DIRECT microphone':'WEB AUDIO'} (LIVE ไม่รีสตาร์ตกล้อง)`);
+}
+function requestMicOutputSync(){
+  micOutputSyncPending=true;
+  if(micOutputSyncPromise)return micOutputSyncPromise;
+  const running=(async()=>{
+    while(micOutputSyncPending){micOutputSyncPending=false;await performMicOutputSync()}
+  })();
+  micOutputSyncPromise=running;
+  running.catch(e=>log(`Audio path switch failed: ${e.message}`)).finally(()=>{
+    if(micOutputSyncPromise===running)micOutputSyncPromise=null;
+    if(micOutputSyncPending)requestMicOutputSync();
+  });
+  return running;
+}
+// The worklet processes a small block of audio on the dedicated audio rendering
+// thread. If absent, bypass the gate rather than cutting speech in RAF.
+async function installMicGate(p){
+  if(!p||p.disposed||p.fallback||p.workletState==='ready'||p.workletState==='loading')return;
+  if(!p.context?.audioWorklet||typeof AudioWorkletNode==='undefined'){
+    p.workletState='unsupported';return;
+  }
+  p.workletState='loading';
+  try{
+    // Some mobile browsers hang while loading an AudioWorklet module.
+    // A short deadline keeps microphone startup responsive; audio stays direct.
+    let deadline;
+    try{
+      await Promise.race([
+        p.context.audioWorklet.addModule('./mic-gate-worklet.js?v=01140'),
+        new Promise((_,reject)=>{deadline=setTimeout(()=>reject(new Error('AudioWorklet timeout')),2500)})
+      ]);
+    }finally{clearTimeout(deadline)}
+    if(p.disposed)return;
+    const node=new AudioWorkletNode(p.context,'remote-camera-gate-v1140',{
+      numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[1]
+    });
+    p.inputAnalyser.disconnect(p.gateGain);
+    p.inputAnalyser.connect(node);
+    node.connect(p.gateGain);
+    p.gateWorklet=node;
+    p.workletState='ready';
+    node.port.postMessage({enabled:softwareNoiseActive(p.rawTrack)});
+    log('Noise gate: AudioWorklet พร้อม (แยกจากภาพ/RAF)');
+  }catch(e){
+    p.workletState='unsupported';
+    log(`AudioWorklet noise gate not available: ${e.message}`);
+    // Preserve a direct unmodified route if this browser cannot gate safely.
+    try{p.inputAnalyser.disconnect();p.inputAnalyser.connect(p.gateGain)}catch{}
+  }
+  if(p===micProcessor){updateMicNoiseUi();requestMicOutputSync()}
 }
 function updateMicNoiseProcessing(){
   const p=micProcessor;
-  if(!p?.gateGain||!p.context)return;
-  p.softNoiseEnabled=softwareNoiseActive();
-  p.gateIsClosed=false;
-  p.lastVoiceMs=0;
-  p.gateGain.gain.setTargetAtTime(1,p.context.currentTime,.018);
+  if(!p||p.disposed)return;
+  p.softNoiseEnabled=softwareNoiseActive(p.rawTrack);
+  if(p.softNoiseEnabled&&p.workletState==='idle')installMicGate(p).catch(()=>{});
+  p.gateWorklet?.port.postMessage({enabled:p.softNoiseEnabled});
   updateMicNoiseUi();
+  requestMicOutputSync();
 }
 function updateMicGainUi(){
   const readout=$('#micGainValue'),slider=$('#micGainRange');
@@ -359,32 +444,35 @@ function updateMicGainUi(){
 function setMicGain(value){
   micGainPercent=Math.max(0,Math.min(200,Math.round(Number(value)/5)*5));
   if(!Number.isFinite(micGainPercent))micGainPercent=100;
-  if(micProcessor?.gainNode&&micProcessor.context){
-    const gain=micProcessor.gainNode.gain;
-    // Smooth the gain to avoid clicks/pop while changing the slider during LIVE.
-    gain.setTargetAtTime(micGainPercent/100,micProcessor.context.currentTime,0.015);
-    if(micProcessor.context.state==='suspended')micProcessor.context.resume().catch(()=>{});
+  const p=micProcessor;
+  if(p?.gainNode&&p.context?.state!=='closed'){
+    p.gainNode.gain.setTargetAtTime(micGainPercent/100,p.context.currentTime,0.018);
   }
   localStorage.setItem(MIC_GAIN_KEY,String(micGainPercent));
   updateMicGainUi();
+  requestMicOutputSync();
 }
-function closeMicProcessor(processor){
-  if(!processor)return;
-  for(const node of [processor.source,processor.inputAnalyser,processor.gateGain,processor.gainNode,processor.outputAnalyser]){
+function closeMicProcessor(p){
+  if(!p)return;
+  p.disposed=true;
+  if(p.context)p.context.onstatechange=null;
+  for(const node of [p.source,p.inputAnalyser,p.gateWorklet,p.gateGain,p.gainNode,p.outputAnalyser]){
     try{node?.disconnect()}catch{}
   }
-  if(processor.outgoingTrack&&processor.outgoingTrack!==processor.rawTrack){
-    try{processor.outgoingTrack.stop()}catch{}
+  try{p.gateWorklet?.port.close()}catch{}
+  if(p.processedTrack&&p.processedTrack!==p.rawTrack){
+    try{p.processedTrack.stop()}catch{}
   }
-  if(processor.context&&processor.context.state!=='closed')processor.context.close().catch(()=>{});
+  if(p.context&&p.context.state!=='closed')p.context.close().catch(()=>{});
 }
-function createMicProcessor(stream){
+async function createMicProcessor(stream){
   const rawTrack=stream.getAudioTracks()[0];
   const Context=window.AudioContext||window.webkitAudioContext;
-  if(!Context)return {rawTrack,outgoingTrack:rawTrack,fallback:true};
+  if(!Context)return {rawTrack,outgoingTrack:rawTrack,fallback:true,disposed:false};
   let context;
   try{
-    context=new Context({latencyHint:'interactive'});
+    // A moderate audio buffer reduces local underrun clicks, unlike minimum-latency mode.
+    context=new Context({latencyHint:0.03});
     const source=context.createMediaStreamSource(stream);
     const inputAnalyser=context.createAnalyser();inputAnalyser.fftSize=1024;
     const gateGain=context.createGain();gateGain.gain.value=1;
@@ -392,29 +480,35 @@ function createMicProcessor(stream){
     const outputAnalyser=context.createAnalyser();outputAnalyser.fftSize=1024;
     const destination=context.createMediaStreamDestination();
     try{destination.channelCount=1}catch{}
-    // Only the outgoing stream goes to WebRTC. No local audio playback/echo.
+    // Never connect to local speakers: prevents feedback/echo.
     source.connect(inputAnalyser);
     inputAnalyser.connect(gateGain);
     gateGain.connect(gainNode);
     gainNode.connect(outputAnalyser);
     outputAnalyser.connect(destination);
-    const outgoingTrack=destination.stream.getAudioTracks()[0];
-    if(!outgoingTrack)throw new Error('ไม่มี audio track จาก Web Audio');
-    outgoingTrack.enabled=!micMuted;
-    if(context.state==='suspended')context.resume().catch(e=>log(`AudioContext resume: ${e.message}`));
-    return {context,source,inputAnalyser,gateGain,gainNode,outputAnalyser,destination,
-      rawTrack,outgoingTrack,fallback:false,
+    const processedTrack=destination.stream.getAudioTracks()[0];
+    if(!processedTrack)throw new Error('ไม่มี Audio Track จาก Web Audio');
+    processedTrack.enabled=!micMuted;
+    const p={context,source,inputAnalyser,gateGain,gainNode,outputAnalyser,destination,
+      rawTrack,processedTrack,outgoingTrack:rawTrack,fallback:false,disposed:false,
+      workletState:'idle',gateWorklet:null,softNoiseEnabled:softwareNoiseActive(rawTrack),
       inputData:new Float32Array(inputAnalyser.fftSize),
-      outputData:new Float32Array(outputAnalyser.fftSize),
-      softNoiseEnabled:softwareNoiseActive(rawTrack),lastVoiceMs:0,gateIsClosed:false};
+      outputData:new Float32Array(outputAnalyser.fftSize),suspendedSince:0};
+    if(p.softNoiseEnabled)await installMicGate(p);
+    // Never start a LIVE session with a potentially silent suspended graph.
+    p.outgoingTrack=context.state==='running'?desiredMicTrack(p):rawTrack;
+    if(context.state==='suspended'){
+      // Resume is attempted without blocking mic capture; direct track stays alive.
+      context.resume().catch(e=>log(`AudioContext resume: ${e.message}`));
+    }
+    context.onstatechange=()=>{if(p===micProcessor&&isPublishing)checkMicHealth().catch(()=>{})};
+    return p;
   }catch(e){
     if(context&&context.state!=='closed')context.close().catch(()=>{});
-    log(`Web Audio unavailable: ${e.message}`);
-    return {rawTrack,outgoingTrack:rawTrack,fallback:true};
+    log(`Web Audio unavailable; use direct microphone: ${e.message}`);
+    return {rawTrack,outgoingTrack:rawTrack,fallback:true,disposed:false};
   }
 }
-// A lightweight fallback *noise gate*, not full speech-aware denoising.
-// It attenuates low-level sound only between speech phrases, so speech is preserved.
 function micRms(analyser,data){
   if(!analyser||!data)return 0;
   analyser.getFloatTimeDomainData(data);
@@ -441,23 +535,13 @@ function startMicMeter(){
     micMeterFrame=0;
     if(!isPublishing){setMicMeterVisible();return}
     micMeterFrame=requestAnimationFrame(frame);
-    if(now-micMeterLastDraw<32)return; // cap meter and gate work near 30 fps
+    if(now-micMeterLastDraw<50)return; // visual meter only, 20fps maximum.
     micMeterLastDraw=now;
     const p=micProcessor,fill=$('#senderMicFill');
     if(!fill)return;
     if(!p||p.fallback||p.context?.state!=='running'||micMuted){
-      micMeterPeak*=.56;fill.style.transform=`scaleX(${micMeterPeak.toFixed(3)})`;
+      micMeterPeak*=.55;fill.style.transform=`scaleX(${micMeterPeak.toFixed(3)})`;
       return;
-    }
-    if(p.softNoiseEnabled){
-      const inputLevel=micRms(p.inputAnalyser,p.inputData);
-      // Conservative hysteresis + hold avoids choppy first syllables.
-      if(inputLevel>.011)p.lastVoiceMs=now;
-      const shouldClose=inputLevel<.0075 && now-p.lastVoiceMs>350;
-      if(shouldClose!==p.gateIsClosed){
-        p.gateIsClosed=shouldClose;
-        p.gateGain.gain.setTargetAtTime(shouldClose?.16:1,p.context.currentTime,shouldClose?.085:.014);
-      }
     }
     const level=micRms(p.outputAnalyser,p.outputData);
     const db=20*Math.log10(Math.max(.0001,level));
@@ -466,6 +550,52 @@ function startMicMeter(){
     fill.style.transform=`scaleX(${micMeterPeak.toFixed(3)})`;
   };
   micMeterFrame=requestAnimationFrame(frame);
+}
+async function checkMicHealth(){
+  if(!isPublishing||micHealthRunning||micSwitchPromise)return;
+  micHealthRunning=true;
+  try{
+    const raw=activeMicTrack(),p=micProcessor,now=Date.now();
+    if(!raw||raw.readyState==='ended'){
+      const stageStatus=$('#senderMicState');if(stageStatus)stageStatus.textContent='ไมค์หลุด';
+      if(now-lastMicRecoveryAt<MIC_RECOVERY_COOLDOWN_MS)return;
+      lastMicRecoveryAt=now;
+      log('Mic track ended: reconnecting microphone without restarting camera');
+      try{await selectMicrophone(explicitMicDeviceId)}
+      catch(e){
+        if(explicitMicDeviceId){try{await selectMicrophone('')}catch(err){micStatus(`ไมค์หลุด • เปิดตั้งค่าเพื่อเลือกใหม่: ${err.message}`)}}
+        else micStatus(`ไมค์หลุด • เปิดตั้งค่าเพื่อเลือกใหม่: ${e.message}`);
+      }
+      return;
+    }
+    if(p?.context){
+      if(p.context.state==='running'){
+        p.suspendedSince=0;
+        if(micForceDirect&&document.visibilityState==='visible')micForceDirect=false;
+        if(p.outgoingTrack!==desiredMicTrack(p))await requestMicOutputSync();
+      }else if(p.context.state==='suspended'||p.context.state==='interrupted'){
+        if(!p.suspendedSince)p.suspendedSince=now;
+        if(document.visibilityState==='visible'&&now-lastAudioResumeAt>7000){
+          lastAudioResumeAt=now;
+          p.context.resume().catch(e=>log(`Audio resume blocked: ${e.message}`));
+        }
+        if(now-p.suspendedSince>2500&&micUsesProcessor(p)&&!micForceDirect){
+          micForceDirect=true;log('AudioContext suspended: switching to direct microphone for continuity');
+          await requestMicOutputSync();
+        }
+      }else if(p.context.state==='closed'&&micUsesProcessor(p)){
+        micForceDirect=true;await requestMicOutputSync();
+      }
+    }
+  }finally{micHealthRunning=false}
+}
+function startMicHealth(){
+  stopMicHealth();
+  micHealthTimer=setInterval(()=>checkMicHealth().catch(e=>log(`Audio check: ${e.message}`)),AUDIO_HEALTH_CHECK_MS);
+}
+function stopMicHealth(){
+  if(micHealthTimer)clearInterval(micHealthTimer);
+  micHealthTimer=null;micForceDirect=false;
 }
 async function listMicrophones({requestPermission=false}={}){
   const md=navigator.mediaDevices;
@@ -499,23 +629,28 @@ async function listMicrophones({requestPermission=false}={}){
 }
 async function selectMicrophone(deviceId=''){
   // Serialize capture and SDK replaceTrack, retaining the old mic on failure.
+  if(micOutputSyncPromise)try{await micOutputSyncPromise}catch{}
   if(micSwitchPromise)await micSwitchPromise;
   const change=(async()=>{
+    const generation=micSessionGeneration;
     const oldStream=audioStream,oldProcessor=micProcessor,oldTrack=micOutgoingTrack();
     let newStream=null,newProcessor=null;
     try{
       micStatus('กำลังเชื่อมต่อไมโครโฟน…');
       newStream=await navigator.mediaDevices.getUserMedia(micCaptureOptions(deviceId));
+      if(generation!==micSessionGeneration)throw new Error('ยกเลิกการเปิดไมค์หลังหยุดส่ง');
       const rawTrack=newStream.getAudioTracks()[0];
       if(!rawTrack)throw new Error('เบราว์เซอร์ไม่ได้ส่ง Audio Track กลับมา');
       rawTrack.enabled=!micMuted;
-      newProcessor=createMicProcessor(newStream);
+      newProcessor=await createMicProcessor(newStream);
+      if(generation!==micSessionGeneration)throw new Error('ยกเลิกการเปิดไมค์หลังหยุดส่ง');
       const nextTrack=newProcessor.outgoingTrack;
       if(!nextTrack)throw new Error('ไม่มี Audio Track สำหรับส่งไลฟ์');
       nextTrack.enabled=!micMuted;
       if(isPublishing&&vdo&&oldTrack){
         await vdo.replaceTrack(oldTrack,nextTrack);
       }
+      if(generation!==micSessionGeneration)throw new Error('ยกเลิกการเปิดไมค์หลังหยุดส่ง');
       if(outStream){
         if(oldTrack)outStream.removeTrack(oldTrack);
         if(!outStream.getAudioTracks().includes(nextTrack))outStream.addTrack(nextTrack);
@@ -525,6 +660,7 @@ async function selectMicrophone(deviceId=''){
       explicitMicDeviceId=deviceId;
       if(oldStream&&oldStream!==newStream)oldStream.getTracks().forEach(t=>t.stop());
       closeMicProcessor(oldProcessor);
+      micForceDirect=false;
       updateMicNoiseProcessing();updateMicUi();updateMicGainUi();updateMicNoiseUi();
       if(isPublishing)startMicMeter();
       log(`ไมโครโฟนพร้อม: ${micName(rawTrack)} / Gain ${micGainPercent}% / Noise ${micNoiseSuppressionEnabled?'ON':'OFF'}${micMuted?' (MUTED)':''}`);
@@ -561,9 +697,10 @@ async function setMicNoiseSuppression(enabled){
     // No 'not supported' dead-end: when native DSP isn't confirmed,
     // turn on the local Web Audio noise gate instead.
     updateMicNoiseProcessing();
+    await requestMicOutputSync();
     localStorage.setItem(MIC_NOISE_KEY,micNoiseSuppressionEnabled?'1':'0');
     updateMicNoiseUi();
-    log(`Noise reduction ${micNoiseSuppressionEnabled?'ON':'OFF'} / ${nativeMicNoiseState()===true?'native':'noise gate / unknown'}`);
+    log(`Noise reduction ${micNoiseSuppressionEnabled?'ON':'OFF'} / ${nativeMicNoiseState()===true?'native':micProcessor?.gateWorklet?'worklet':'browser unsupported'}`);
   }catch(e){
     micNoiseSuppressionEnabled=previous;
     updateMicNoiseProcessing();
@@ -1095,7 +1232,7 @@ async function startPublishing(){
   if(!room||!streamID)throw new Error('กรุณาระบุ Room และ Stream ID');
   vdo=new VDONinjaSDK({autoRecover:true,autoRelay:true,salt:'vdo.ninja'});
   vdo.addEventListener('connected',()=>{$('#statRtc').textContent='signaling connected';log('เชื่อม signaling แล้ว')});
-  vdo.addEventListener('publishing',()=>{isPublishing=true;$('#liveBadge').textContent='LIVE';updateSimpleStatus();$('#liveBadge').classList.add('ok');$('#statRtc').textContent='PUBLISHING';log('เริ่มส่ง WebRTC แล้ว');startTelemetry();startMicMeter();requestWakeLock()});
+  vdo.addEventListener('publishing',()=>{isPublishing=true;$('#liveBadge').textContent='LIVE';updateSimpleStatus();$('#liveBadge').classList.add('ok');$('#statRtc').textContent='PUBLISHING';log('เริ่มส่ง WebRTC แล้ว');startTelemetry();startMicMeter();startMicHealth();requestWakeLock()});
   vdo.addEventListener('peerConnected',e=>{const id=e.detail?.uuid;if(id){peerIds.add(id);updatePeerCount();log(`Viewer connected (${peerIds.size})`);setTimeout(sendTelemetry,250)}});
   vdo.addEventListener('peerDisconnected',e=>{const id=e.detail?.uuid;if(id){peerIds.delete(id);updatePeerCount();log(`Viewer disconnected (${peerIds.size})`)}});
   vdo.addEventListener('connectionRecovered',()=>log('WebRTC recovered'));
@@ -1104,7 +1241,7 @@ async function startPublishing(){
   await vdo.connect();await vdo.joinRoom({room});await vdo.publish(stream,{room,streamID,label:publisherLabel()});
   isPublishing=true;$('#liveBadge').textContent='LIVE';updateSimpleStatus();$('#liveBadge').classList.add('ok');$('#statRtc').textContent='PUBLISHING';
   startMessageChannel().catch(e=>log(`ช่องข้อความเริ่มไม่สำเร็จ: ${e.message}`));
-  startTelemetry();startMicMeter();requestWakeLock();
+  startTelemetry();startMicMeter();startMicHealth();requestWakeLock();
 }
 
 
@@ -1165,11 +1302,12 @@ async function handleRemote(d,sourceUuid=''){
   }
 }
 async function stopAll(){
+  micSessionGeneration++; // cancel any unfinished microphone acquisition
   if(messageRetryTimer){clearInterval(messageRetryTimer);messageRetryTimer=null}
   try{if(messageVdo){await messageVdo.stopViewing?.(controlDataStreamId($('#room').value.trim()));await messageVdo.disconnect?.()}}catch{}
   messageVdo=null;messageReady=false;messageViewPending=false;
   try{if(vdo){await vdo.stopPublishing?.();await vdo.disconnect?.()}}catch{}
-  isPublishing=false;stopMicMeter();peerIds.clear();updatePeerCount();
+  isPublishing=false;stopMicHealth();stopMicMeter();peerIds.clear();updatePeerCount();
   if(telemetryTimer){clearInterval(telemetryTimer);telemetryTimer=null}
   if(zoomState.timer){clearInterval(zoomState.timer);zoomState.timer=null}
   zoomState.drive=0;zoomState.velocity=0;zoomState.coasting=false;zoomState.virtual=zoomState.current;
@@ -1260,21 +1398,21 @@ document.querySelectorAll('[data-quick-reply]').forEach(btn=>btn.addEventListene
 document.addEventListener('visibilitychange',()=>{
   if(!isPublishing)return;
   const p=micProcessor;
-  if(document.visibilityState==='hidden'&&p?.softNoiseEnabled&&p.gateGain&&p.context){
-    // RAF can be suspended in background. Release the noise gate before that
-    // happens so live speech cannot remain stuck attenuated at ~16%.
-    p.gateIsClosed=false;
-    p.gateGain.gain.setTargetAtTime(1,p.context.currentTime,.015);
-  }
-  if(document.visibilityState==='visible'){
+  if(document.visibilityState==='hidden'&&micUsesProcessor(p)){
+    // Before iOS/Firefox can suspend Web Audio, request a direct mic track.
+    // This retains speech even if the processed monitor/meter stops rendering.
+    micForceDirect=true;
+    requestMicOutputSync();
+  }else if(document.visibilityState==='visible'){
     requestWakeLock();
-    if(p?.context?.state==='suspended')p.context.resume().catch(()=>{});
+    if(p?.context?.state==='suspended'||p?.context?.state==='interrupted')p.context.resume().catch(()=>{});
+    checkMicHealth().catch(()=>{});
   }
 });
 window.addEventListener('beforeunload',()=>stopAll());
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=01139').catch(()=>{});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=01140').catch(()=>{});
 $('#statHint').textContent=q().hint;
 $('#statSmartProfile').textContent=smartProfile;
 initIdentity();updateSimpleStatus();updateMicUi();updateMicGainUi();updateMicNoiseUi();
 $('#newStreamId').onclick=generateNewStreamId;
-log(`v0.11.32 พร้อมใช้งาน — Sender quick quality presets / Mic Volume & Noise Reduction / Control Data Hub — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
+log(`v0.11.40 AUDIO FIRST พร้อมใช้งาน — Sender quick quality presets / Mic Volume & Noise Reduction / Control Data Hub — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);

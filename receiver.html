@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>OBS Smart Receiver v0.11.39</title>
+  <title>OBS Smart Receiver v0.11.40</title>
   <style>
     html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;color:#fff;font:14px system-ui}
     #vdo{position:fixed;inset:0;width:100%;height:100%;border:0;background:#000}
@@ -46,7 +46,16 @@
   // v0.11.25: propagate an explicitly requested codec even in Native Direct mode.
   // iOS Native uses VP8 because its H.264 path was observed to freeze after a few seconds.
   if(codec)u.searchParams.set('codec',codec);
-  if(preview)u.searchParams.set('mutespeaker','');
+  if(preview){
+    // Control Center preview never plays audio; don't negotiate duplicate mic audio.
+    u.searchParams.set('noaudio','');
+  }else{
+    // Best-effort receiver-side hint: prioritize speech over video during congestion.
+    // VDO.Ninja may ignore it on unsupported browsers / SDK publisher paths.
+    if(p.get('audiofirst')!=='0')u.searchParams.set('enhance','');
+    // RED may be useful on Chromium OBS but is not forced: codec support differs.
+    if(p.get('audiofec')==='1')u.searchParams.set('audiocodec','red');
+  }
   iframe.src=u.toString();
   iframe.addEventListener('load',()=>{boot.style.display='none';setTimeout(()=>setTarget(currentBitrate,'เริ่มต้น'),900)});
 
@@ -56,6 +65,7 @@
   let currentBitrate=steps[0];
   let badCount=0,criticalCount=0,goodCount=0,minBadCount=0;
   let lastStats=null,lastChange=0,lastFallbackSignal=0,lastRestoreSignal=0;
+  const audioStatHistory=new Map(); // track *deltas*, not lifetime loss totals
 
   function toNumber(v){const n=Number(v);return Number.isFinite(n)?n:null}
   function walk(o,fn,depth=0){
@@ -79,10 +89,17 @@
     return null;
   }
   function parseStats(stats){
-    const out={bitrateKbps:null,lossPct:null,rttMs:null,jitterMs:null,availableKbps:null,resolution:null,fps:null};
+    const out={bitrateKbps:null,lossPct:null,rttMs:null,jitterMs:null,availableKbps:null,resolution:null,fps:null,
+      audioLossPct:null,audioJitterMs:null,audioConcealPct:null};
     const bitrates=[],losses=[],rtts=[],jitters=[],available=[],fpss=[];
-    walk(stats,(key,value)=>{
+    const inboundAudio=new Set();
+    walk(stats,(key,value,parent)=>{
       const k=String(key).toLowerCase();
+      if(parent&&typeof parent==='object'){
+        const ty=String(parent.type||'').toLowerCase().replace(/[_ ]/g,'-');
+        if((ty==='inbound-rtp'||ty==='inboundrtp')&&
+           (parent.kind==='audio'||parent.mediaType==='audio'))inboundAudio.add(parent);
+      }
       const n=toNumber(value);
       if(typeof value==='string' && k.includes('resolution') && /\d+\s*[x×]\s*\d+/i.test(value))out.resolution=value;
       if(n==null)return;
@@ -110,11 +127,41 @@
     if(jitters.length)out.jitterMs=Math.max(...jitters.filter(v=>v>=0));
     if(available.length)out.availableKbps=Math.max(...available.filter(v=>v>=0));
     if(fpss.length)out.fps=Math.max(...fpss.filter(v=>v>=0));
+    // Standard RTCInboundRtpStreamStats: jitter is seconds; counters are cumulative.
+    // Compare consecutive samples only to avoid stale loss distorting decisions.
+    const audioLoss=[],audioJitter=[],audioConceal=[];
+    for(const st of inboundAudio){
+      const id=String(st.id??st.ssrc??'audio');
+      const jitter=toNumber(st.jitter);
+      if(jitter!==null&&jitter>=0)audioJitter.push(jitter*1000);
+      const nowRx=toNumber(st.packetsReceived),nowLost=toNumber(st.packetsLost);
+      const nowConcealed=toNumber(st.concealedSamples),nowSamples=toNumber(st.totalSamplesReceived);
+      const old=audioStatHistory.get(id);
+      if(old){
+        if(nowRx!==null&&nowLost!==null&&old.rx!==null&&old.lost!==null){
+          const r=nowRx-old.rx,l=nowLost-old.lost;
+          if(r>=0&&l>=0&&r+l>=15)audioLoss.push(100*l/(r+l));
+        }
+        if(nowConcealed!==null&&nowSamples!==null&&old.concealed!==null&&old.samples!==null){
+          const c=nowConcealed-old.concealed,t=nowSamples-old.samples;
+          if(c>=0&&t>=2400&&c<=t)audioConceal.push(100*c/t);
+        }
+      }
+      audioStatHistory.set(id,{rx:nowRx,lost:nowLost,concealed:nowConcealed,samples:nowSamples});
+    }
+    if(audioLoss.length)out.audioLossPct=Math.max(...audioLoss);
+    if(audioJitter.length)out.audioJitterMs=Math.max(...audioJitter);
+    if(audioConceal.length)out.audioConcealPct=Math.max(...audioConceal);
     return out;
   }
   function classify(s){
     const loss=s.lossPct, rtt=s.rttMs, jitter=s.jitterMs, avail=s.availableKbps;
-    if(loss==null&&rtt==null&&jitter==null&&avail==null)return 'waiting';
+    const al=s.audioLossPct,aj=s.audioJitterMs,ac=s.audioConcealPct;
+    if(loss==null&&rtt==null&&jitter==null&&avail==null&&al==null&&aj==null&&ac==null)return 'waiting';
+    // Preserve audio under congestion: lower *video bitrate* when inbound audio
+    // RTP shows repeated packet loss, concealment, or rising jitter.
+    if((al!=null&&al>=7)||(ac!=null&&ac>=7)||(aj!=null&&aj>=140))return 'critical';
+    if((al!=null&&al>=2)||(ac!=null&&ac>=3)||(aj!=null&&aj>=65))return 'weak';
     if((loss!=null&&loss>=7)||(rtt!=null&&rtt>=800)||(jitter!=null&&jitter>=120)||(avail!=null&&avail<currentBitrate*.55))return 'critical';
     if((loss!=null&&loss>=2.5)||(rtt!=null&&rtt>=450)||(jitter!=null&&jitter>=60)||(avail!=null&&avail<currentBitrate*.78))return 'weak';
     if((loss!=null&&loss>=1)||(rtt!=null&&rtt>=250)||(jitter!=null&&jitter>=30))return 'fair';

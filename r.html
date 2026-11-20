@@ -40,6 +40,8 @@
   u.searchParams.set('buffer',String(buffer));
   if(codec)u.searchParams.set('codec',codec);
   if(smart){u.searchParams.set('smart','1');u.searchParams.set('minbitrate',String(minBitrate))}
+  // Optional RED audio redundancy for Chromium OBS after field testing.
+  if(p.get('afec')==='1')u.searchParams.set('audiofec','1');
   location.replace(u.href);
 })();
 </script>

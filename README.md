@@ -186,3 +186,7 @@
 - The noise-reduction toggle is not disabled solely because getSupportedConstraints omits noiseSuppression. Requests native suppression first; if not confirmed, a conservative Web Audio **noise gate** attenuates quiet sound **between** phrases (not full AI denoising).
 - Added an animated meter for the outgoing microphone track on the active sender stage; mute reads zero. The meter never plays microphone audio locally.
 - Simplified visible microphone settings and added cache-busting version 01129.
+
+
+## v0.11.40 Audio First
+รายละเอียดการปรับเสียงและข้อจำกัดใน `PATCH-v0.11.40.txt`
