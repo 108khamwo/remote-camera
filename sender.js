@@ -76,6 +76,7 @@ const LINK_PARAMS=new URLSearchParams(location.search);
 const LINK_STREAM_PARAM=LINK_PARAMS.get('s');
 const FIXED_STREAM_ID=/^cam_fixed_[a-f0-9]{32}$/.test(LINK_STREAM_PARAM||'')?LINK_STREAM_PARAM:'';
 const BAD_FIXED_LINK=LINK_PARAMS.has('s')&&!FIXED_STREAM_ID;
+const FIXED_PRESET_KEY=FIXED_STREAM_ID?`remoteCamSlotPresetV1_${FIXED_STREAM_ID}`:'';
 let DEVICE_ID='';
 function shortId(n=8){try{return crypto.randomUUID().replace(/-/g,'').slice(0,n)}catch{return (Math.random().toString(36).slice(2)+Date.now().toString(36)).slice(0,n)}}
 function normId(v){return String(v||'').trim().replace(/[^\w]/g,'_')}
@@ -98,6 +99,13 @@ function initIdentity(){
   if(!id.startsWith('cam_'))id=`cam_${platformSlug()}_${shortId(8)}`;
   $('#room').value=systemRoom();
   $('#streamId').value=id;
+  if(FIXED_STREAM_ID){
+    const savedPreset=localStorage.getItem(FIXED_PRESET_KEY)||'';
+    if(PRESETS[savedPreset])$('#quality').value=savedPreset;
+    const group=$('#senderQualityGroup'),managed=$('#senderQualityControlled');
+    if(group)group.hidden=true;
+    if(managed)managed.hidden=false;
+  }
   if($('#roomView'))$('#roomView').value=systemRoom();
   if($('#streamIdView'))$('#streamIdView').value=id;
   // Never inherit another shoot's nickname when opening a link on a shared phone.
@@ -902,12 +910,20 @@ async function setZoom(value){
 
 async function setQualityPreset(value,reason='Remote'){
   if(!PRESETS[value])throw new Error(`ไม่พบ preset ${value}`);
-  if($('#quality').value===value){smartProfile=reason;$('#statSmartProfile').textContent=smartProfile;sendTelemetry();return}
+  if($('#quality').value===value){
+    smartProfile=reason;$('#statSmartProfile').textContent=smartProfile;
+    if(FIXED_PRESET_KEY)localStorage.setItem(FIXED_PRESET_KEY,value);
+    sendTelemetry();return;
+  }
+  const previous=$('#quality').value;
   $('#quality').value=value;
+  try{
+    if(cameraStream)await openCamera({facing:currentFacing,deviceId:explicitDeviceId});
+  }catch(e){$('#quality').value=previous;throw e}
+  if(FIXED_PRESET_KEY)localStorage.setItem(FIXED_PRESET_KEY,value);
   smartProfile=reason;
   $('#statSmartProfile').textContent=smartProfile;
   log(`${reason} → ${q().label}`);
-  if(cameraStream)await openCamera({facing:currentFacing,deviceId:explicitDeviceId});
   sendTelemetry();
 }
 
@@ -1049,6 +1065,7 @@ function bindHoldZoom(btn,dir){
 }
 bindHoldZoom($('#zoomOutBtn'),-1);bindHoldZoom($('#zoomInBtn'),1);
 $('#quality').onchange=async()=>{
+  if(FIXED_STREAM_ID)return;
   smartProfile='Manual';$('#statSmartProfile').textContent=smartProfile;
   log(`เปลี่ยนคุณภาพเป็น ${q().label} / hint=${q().hint}`);
   if(cameraStream){try{await openCamera({facing:currentFacing,deviceId:explicitDeviceId})}catch(e){log(`Quality switch error: ${e.message}`)}}
@@ -1083,15 +1100,23 @@ $('#senderMessageSend').onclick=()=>{const input=$('#senderMessageInput');if(sen
 $('#senderMessageInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#senderMessageSend').click()}});
 document.querySelectorAll('[data-quick-reply]').forEach(btn=>btn.addEventListener('click',()=>{if(sendSenderMessage(btn.dataset.quickReply||''))closeSheets()}));
 document.addEventListener('visibilitychange',()=>{
-  if(document.visibilityState==='visible'&&isPublishing){
+  if(!isPublishing)return;
+  const p=micProcessor;
+  if(document.visibilityState==='hidden'&&p?.softNoiseEnabled&&p.gateGain&&p.context){
+    // RAF can be suspended in background. Release the noise gate before that
+    // happens so live speech cannot remain stuck attenuated at ~16%.
+    p.gateIsClosed=false;
+    p.gateGain.gain.setTargetAtTime(1,p.context.currentTime,.015);
+  }
+  if(document.visibilityState==='visible'){
     requestWakeLock();
-    if(micProcessor?.context?.state==='suspended')micProcessor.context.resume().catch(()=>{});
+    if(p?.context?.state==='suspended')p.context.resume().catch(()=>{});
   }
 });
 window.addEventListener('beforeunload',()=>stopAll());
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=01130').catch(()=>{});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=01131').catch(()=>{});
 $('#statHint').textContent=q().hint;
 $('#statSmartProfile').textContent=smartProfile;
 initIdentity();updateSimpleStatus();updateMicUi();updateMicGainUi();updateMicNoiseUi();
 $('#newStreamId').onclick=generateNewStreamId;
-log(`v0.11.29 พร้อมใช้งาน — Mic Volume & Noise Reduction / Control Data Hub — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
+log(`v0.11.31 พร้อมใช้งาน — Receiver controlled video preset / Mic Volume & Noise Reduction / Control Data Hub — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);

@@ -635,5 +635,13 @@ body.fullscreen-active .sender-call-controls{flex:none}
 .perma-url-line button{white-space:nowrap;padding:8px 10px;font-size:12px}
 .perma-import{margin-top:12px}
 .perma-import summary{font-size:12px}
+.receiver-managed-label{font-size:13px;font-weight:700;color:#b5eaff;padding:12px;border:1px solid rgba(95,210,255,.22);border-radius:10px}
+.receiver-quality-row{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr)!important}
+.receiver-quality-state{display:flex;flex-direction:column;justify-content:center}
+#receiverQualityStatus{min-height:30px;display:flex;align-items:center;font-weight:600}
+#fixedNetworkNote{margin-top:7px}
+@media(max-width:580px){.receiver-quality-row{grid-template-columns:1fr!important}}
 .sender-link-badge{font-size:10px;padding:2px 7px;border:1px solid rgba(95,210,255,.35);border-radius:20px;color:#b5efff}
 @media(max-width:580px){.perma-url-line{grid-template-columns:1fr auto}.perma-url-line .mini{grid-column:1/-1}.permanent-link-card{padding:12px}.perma-slot-list{grid-template-columns:1fr}}
+
+#senderQualityGroup[hidden],#senderQualityControlled[hidden],#fixedNetworkNote[hidden]{display:none!important}

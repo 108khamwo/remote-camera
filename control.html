@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="styles.css?v=01130"><title>ผู้ควบคุม | ระบบ Live Streaming ระยะไกลผ่านมือถือ</title></head>
+<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="styles.css?v=01131"><title>ผู้ควบคุม | ระบบ Live Streaming ระยะไกลผ่านมือถือ</title></head>
 <body><main class="wrap compact-control">
 <div class="topbar"><div class="brand control-brand"><svg class="control-ui-icon control-ui-icon-brand" viewBox="0 0 24 24" aria-hidden="true">
   <rect x="3" y="4" width="18" height="13" rx="2.5"></rect>
   <path d="M8.5 21h7"></path><path d="M12 17v4"></path>
-</svg><span>Control Center</span> <span class="version">v0.11.30</span></div><a class="badge" href="index.html">หน้าหลัก</a></div>
+</svg><span>Control Center</span> <span class="version">v0.11.31</span></div><a class="badge" href="index.html">หน้าหลัก</a></div>
 
 <div class="card permanent-link-card">
   <div class="camera-picker-head"><div class="section-title">ลิงก์ส่งภาพถาวร</div></div>
@@ -75,13 +75,28 @@
   </div>
 
   <div class="spacer"></div>
+  <div class="card control-quality-card">
+    <div class="section-title">คุณภาพภาพ · ตั้งค่าจากฝั่งรับ</div>
+    <div class="row3 receiver-quality-row">
+      <div><label for="videoPreset">ความละเอียด / FPS</label><select id="videoPreset">
+        <option value="1080_30" selected>1080p · 30 FPS</option>
+        <option value="720_30">720p · 30 FPS</option>
+        <option value="1080_60">1080p · สูงสุด 60 FPS</option>
+        <option value="720_60">720p · สูงสุด 60 FPS</option>
+        <option value="1080_24_detail">1080p · 24 FPS</option>
+      </select></div>
+      <div class="receiver-quality-state"><label>สถานะ</label><div id="receiverQualityStatus" class="mini">รอเชื่อมต่อมือถือ</div></div>
+    </div>
+  </div>
+  <div class="spacer"></div>
   <div class="card">
     <div class="section-title">เครือข่าย</div>
     <div class="row3">
-      <div><label>โหมด</label><select id="networkMode"><option value="manual" selected>Manual</option><option value="smart">Smart Network</option></select></div>
-      <div><label>Bitrate</label><select id="bitrate"><option value="4000">4 Mbps</option><option value="6000">6 Mbps</option><option value="8000" selected>8 Mbps</option><option value="10000">10 Mbps</option><option value="12000">12 Mbps</option><option value="16000">16 Mbps</option></select></div>
-      <div><label>Buffer</label><select id="buffer"><option value="0">0 ms</option><option value="100">100 ms</option><option value="200" selected>200 ms</option><option value="350">350 ms</option></select></div>
+      <div><label>โหมด</label><select id="networkMode"><option value="manual">Manual</option><option value="smart" selected>Smart Network</option></select></div>
+      <div><label>Bitrate</label><select id="bitrate"><option value="4000">4 Mbps</option><option value="6000" selected>6 Mbps</option><option value="8000">8 Mbps</option><option value="10000">10 Mbps</option><option value="12000">12 Mbps</option><option value="16000">16 Mbps</option></select></div>
+      <div><label>Buffer</label><select id="buffer"><option value="0">0 ms</option><option value="100">100 ms</option><option value="200">200 ms</option><option value="350" selected>350 ms</option></select></div>
     </div>
+    <div id="fixedNetworkNote" class="mini" hidden>ลิงก์ OBS ถาวร · Smart Network 6 Mbps / Buffer 350 ms</div>
     <details class="advanced compact-details">
       <summary>ตั้งค่าเพิ่มเติม</summary>
       <div class="spacer"></div>
@@ -109,4 +124,4 @@
 </aside>
 </div></main>
 <div id="controlMessageToast" class="control-message-toast" hidden><strong id="controlMessageToastFrom">ข้อความจากกล้อง</strong><div id="controlMessageToastText"></div></div>
-<script src="sdk-loader.js?v=01124"></script><script src="control.js?v=01130"></script></body></html>
+<script src="sdk-loader.js?v=01124"></script><script src="control.js?v=01131"></script></body></html>

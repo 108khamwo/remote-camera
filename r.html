@@ -22,11 +22,12 @@
   const room=clean(`rc_${host}_${project}`);
 
   const direct=p.get('d')==='1';
-  const rawBitrate=parseInt(p.get('b')||'8000',10);
-  const rawBuffer=parseInt(p.get('u')??'200',10);
+  const isFixed=/^cam_fixed_[a-f0-9]{32}$/.test(stream);
+  const rawBitrate=parseInt(p.get('b')||(isFixed?'6000':'8000'),10);
+  const rawBuffer=parseInt(p.get('u')??(isFixed?'350':'200'),10);
   const bitrate=Math.max(800,Math.min(20000,Number.isFinite(rawBitrate)?rawBitrate:8000));
   const buffer=Math.max(0,Math.min(1000,Number.isFinite(rawBuffer)?rawBuffer:200));
-  const smart=p.get('m')==='1';
+  const smart=p.has('m')?p.get('m')==='1':isFixed;
   const rawMinBitrate=parseInt(p.get('n')||'1800',10);
   const minBitrate=Math.max(600,Math.min(bitrate,Number.isFinite(rawMinBitrate)?rawMinBitrate:1800));
   const codecCode=String(p.get('c')??'h').toLowerCase();
