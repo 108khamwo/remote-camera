@@ -1,0 +1,12 @@
+Remote Camera v0.11.34 — CONTROL & STATS FIX
+
+- Receiver command quality uses targeted broadcast on the existing Data Hub. Only the sender whose Stream ID matches targetStream can execute it.
+- Sender acknowledges receipt immediately ("มือถือรับคำสั่งแล้ว") and separately reports final success/failure.
+- Command retry avoids re-running quality switching while camera is busy; timeouts report missing confirmation honestly.
+- Sender telemetry remains the authority for capture resolution. 1080p/720p and 30/maximum 60 FPS are preserved, not automatically downscaled.
+- RTT parsing no longer blindly multiplies any value under 10 by 1000; avoids incorrect 4 ms -> 4000 ms and 8 ms -> 8000 ms.
+- Smart Network ignores missing diagnostics instead of reporting "good", chooses a representative RTT when stats contain multiple peer values.
+- Bump JS and CSS cache versions; fixes stale ?v=01132 links in previous packages.
+
+Deploy: replace all site files on GitHub Pages. Stop Sender, close tabs at sender/control, reopen both and hard-reload; OBS Source URL stays unchanged. Verify command ACK and real resolution.
+Limitations: browser or camera hardware can cap FPS to 30, and unsupported sensor resolutions cannot be forced. No real-device WebRTC test performed.

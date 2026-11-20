@@ -1,3 +1,4 @@
+/* Remote Camera v0.11.34 — sender quality command ACK + receiver stats fixes */
 const $=s=>document.querySelector(s); const logEl=$('#log');
 function log(m){const t=new Date().toLocaleTimeString();logEl.textContent+=`[${t}] ${m}\n`;logEl.scrollTop=logEl.scrollHeight}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -1036,9 +1037,9 @@ async function startPublishing(){
 function pruneProcessedCommands(){
   const now=Date.now();for(const [k,v] of processedRemoteCommands){if(now-(v?.ts||0)>30000)processedRemoteCommands.delete(k)}
 }
-function sendRemoteAck(d,sourceUuid,{ok=true,message=''}={}){
+function sendRemoteAck(d,sourceUuid,{ok=true,message='',phase='complete'}={}){
   if(!d?.commandId)return;
-  const ack={type:'remote-camera-ack',commandId:d.commandId,command:d.command,ok,message,ts:Date.now(),streamID:normId($('#streamId').value),deviceID:DEVICE_ID,currentFacing,zoomCurrent:zoomState.current};
+  const ack={type:'remote-camera-ack',commandId:d.commandId,command:d.command,ok,message,phase,ts:Date.now(),streamID:normId($('#streamId').value),deviceID:DEVICE_ID,currentFacing,zoomCurrent:zoomState.current};
   // Control Center listens on its own data-only SDK (remote-camera-data-v1),
   // NOT the video publisher SDK (vdo.ninja). Reply on the matching channel.
   if(messageVdo){
@@ -1060,11 +1061,15 @@ async function handleRemote(d,sourceUuid=''){
     const prior=processedRemoteCommands.get(d.commandId);
     // Never claim success while the first attempt is still opening the camera.
     if(prior?.done)sendRemoteAck(d,sourceUuid,{ok:prior.ok,message:prior.message});
+    else sendRemoteAck(d,sourceUuid,{phase:'received',message:'กำลังปรับ'});
     return;
   }
   if(d.commandId)processedRemoteCommands.set(d.commandId,{ts:Date.now(),done:false});
   else {if(d.ts&&d.ts===lastRemoteTs)return;if(d.ts)lastRemoteTs=d.ts}
   $('#statRemote').textContent=`คำสั่ง: ${d.command}`;log(`Remote: ${d.command}`);
+  // Send a receipt *before* waiting on getUserMedia/applyConstraints.
+  // Firefox/iOS can take several seconds to acquire the camera again.
+  sendRemoteAck(d,sourceUuid,{phase:'received',message:'กำลังปรับ'});
   try{
     let known=true;
     if(d.command==='front')await openCamera({facing:'user'});

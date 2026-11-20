@@ -1,3 +1,4 @@
+/* Remote Camera v0.11.34 — sender quality command ACK + receiver stats fixes */
 const $=s=>document.querySelector(s);
 const logEl=$('#log');
 let discoveryVdo=null, discoveryCtl=null, discoveryTimer=null, nativePresenceVdo=null;
@@ -106,7 +107,10 @@ function syncVideoPreset(id=activeId(),reportedPreset='',force=false){
       setQualityStatus('ยังไม่ตรง · กล้องจริง '+actualQualityLabel(lastTelemetry),{retry:true});return;
     }
   }
-  if(!discoveryVdo||!dataPeerCount){
+  // Telemetry may arrive even when the SDK misses peerConnected. Fresh sender
+  // telemetry is sufficient evidence to *attempt* a stream-scoped broadcast.
+  const freshTelemetry=Number(lastTelemetry?.ts||0)>Date.now()-7000;
+  if(!discoveryVdo||(!dataPeerCount&&!freshTelemetry)){
     setQualityStatus('รอเชื่อมช่องควบคุม · กล้องจริง '+actualQualityLabel(lastTelemetry));return;
   }
   // Never queue duplicate quality changes when a previous one has not completed.
@@ -427,16 +431,18 @@ function routeRemotePayload(payload,{fallback=false,broadcast=false}={}){
   if(broadcast)return discoveryVdo.sendData(payload,{allowFallback:true,preference:'any'});
   const id=cleanId(payload?.targetStream||activeId());
   if(!id)throw new Error('ยังไม่ได้เลือกกล้อง');
+  // VDO.Ninja's data-only peer UUID can change independently of video UUID.
+  // Using a stale UUID may silently drop a command (sendData returning void
+  // does NOT prove delivery). Quality commands therefore use data broadcast;
+  // Sender filters by targetStream *before* executing any command.
+  if(payload?.command==='quality'||broadcast||fallback){
+    return discoveryVdo.sendData(payload,{allowFallback:true,preference:'any'})!==false;
+  }
   const c=cameras.find(x=>x.id===id);
-  // Sender's data SDK is a *viewer* of controlStream, not a video publisher
-  // under cam_fixed_* on this SDK. Target its data-peer UUID, or broadcast
-  // with targetStream filtering on each sender when a UUID is unavailable.
   const target={allowFallback:true,preference:'any'};
-  if(!fallback&&c?.uuid)target.uuid=c.uuid;
+  if(c?.uuid)target.uuid=c.uuid;
   const sent=discoveryVdo.sendData(payload,target);
   if(sent!==false)return true;
-  // The sender can reconnect with a new UUID; broadcast is still scoped by
-  // targetStream and is safe in a multi-camera room.
   if(target.uuid)return discoveryVdo.sendData(payload,{allowFallback:true,preference:'any'})!==false;
   return false;
 }
@@ -447,6 +453,16 @@ function handleCommandAck(d,uuid=''){
   const target=cleanId(pending.payload?.targetStream||'');
   const from=cleanId(d?.streamID||'');
   if(target&&from&&target!==from)return;
+  // First ACK is merely evidence the sender got the instruction. A second,
+  // final ACK + fresh video telemetry is required before claiming success.
+  if(d.phase==='received'){
+    pending.received=true;
+    if(pending.command==='quality'&&target===activeId()){
+      setQualityStatus('มือถือรับคำสั่งแล้ว · กำลังปรับกล้อง');
+    }
+    setControlStatus(`มือถือรับคำสั่งแล้ว • ${pending.label}`,'warn');
+    return;
+  }
   pendingCommands.delete(cid);
   clearTimeout(pending.retryTimer);clearTimeout(pending.failTimer);
   if(d.ok===false){
@@ -794,16 +810,20 @@ function send(command,extra={}){
   pendingCommands.set(cid,item);
   item.retryTimer=setTimeout(()=>{
     if(!pendingCommands.has(cid))return;
+    if(pendingCommands.get(cid)?.received)return; // do not restart active camera change
     try{routeRemotePayload(payload,{fallback:true});setControlStatus(`กำลังลองซ้ำ • ${label}`,'warn')}catch{}
-  },command==='quality'?2200:650);
+  },command==='quality'?2800:650);
   item.failTimer=setTimeout(()=>{
     if(!pendingCommands.has(cid))return;
-    try{routeRemotePayload(payload,{broadcast:true})}catch{}
+    if(!pendingCommands.get(cid)?.received){
+      try{routeRemotePayload(payload,{broadcast:true})}catch{}
+    }
     setTimeout(()=>{
       if(!pendingCommands.has(cid))return;
       pendingCommands.delete(cid);
-      setControlStatus(`มือถือไม่ตอบรับ • ${label}`,'bad');
-      log(`⚠ ไม่มี ACK สำหรับ ${command} → ${id}`);
+      const sawReceipt=!!item.received;
+      setControlStatus(`${sawReceipt?'ปรับยังไม่เสร็จ':'มือถือไม่ตอบรับ'} • ${label}`,'bad');
+      log(`⚠ ${sawReceipt?'ไม่มี ACK ผลลัพธ์':'ไม่มี ACK'} สำหรับ ${command} → ${id}`);
       if(command==='quality'&&id===activeId()){
         const requested=String(payload.value||'');
         if(lastTelemetry?.presetKey===requested&&qualityMatchesActual(requested,lastTelemetry.actual)){
@@ -811,11 +831,11 @@ function send(command,extra={}){
           setQualityStatus(qualityCaptureStatus(requested,lastTelemetry));
         }else{
           qualityErrorUntil.set(id,Date.now()+15000);
-          setQualityStatus('มือถือไม่ตอบรับ · กล้องจริง '+actualQualityLabel(lastTelemetry),{retry:true});
+          setQualityStatus((sawReceipt?'มือถือรับคำสั่งแต่ยังไม่ยืนยันผล':'มือถือไม่ตอบรับ')+' · กล้องจริง '+actualQualityLabel(lastTelemetry),{retry:true});
         }
       }
     },1100);
-  },command==='quality'?10500:1450);
+  },command==='quality'?16000:1450);
   return cid;
 }
 async function selectCamera(id,{fromUser=true}={}){

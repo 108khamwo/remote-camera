@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>OBS Smart Receiver v0.11.33</title>
+  <title>OBS Smart Receiver v0.11.34</title>
   <style>
     html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;color:#fff;font:14px system-ui}
     #vdo{position:fixed;inset:0;width:100%;height:100%;border:0;background:#000}
@@ -65,6 +65,19 @@
       if(v&&typeof v==='object')walk(v,fn,depth+1);
     }
   }
+  function normalizeRttMs(key,raw){
+    const k=String(key).toLowerCase(),n=Number(raw);
+    if(!Number.isFinite(n)||n<0)return null;
+    // RTCStats candidate-pair currentRoundTripTime is specified in seconds.
+    if(k.includes('currentroundtriptime'))return n*1000;
+    // Explicit ms units are already in milliseconds, even if below 10.
+    if(k.includes('rtt_ms')||k.includes('rttinms')||k.includes('round_trip_time_in_ms')||k.includes('roundtriptimeinms'))return n;
+    // SDK diagnostics commonly report integer RTT in ms; the previous code
+    // incorrectly made 4 ms -> 4000 ms and 8 ms -> 8000 ms.
+    if(k==='rtt')return n; // SDK's generic RTT is in ms, including decimals.
+    if(k.includes('round_trip_time')||k.includes('roundtriptime'))return n>0&&n<1?n*1000:n;
+    return null;
+  }
   function parseStats(stats){
     const out={bitrateKbps:null,lossPct:null,rttMs:null,jitterMs:null,availableKbps:null,resolution:null,fps:null};
     const bitrates=[],losses=[],rtts=[],jitters=[],available=[],fpss=[];
@@ -81,8 +94,8 @@
       }
       if(k.includes('packetloss_in_percentage') || k.includes('packet_loss_percentage') || k.includes('packetlosspercentage'))losses.push(n);
       if((k==='packetloss'||k==='packet_loss') && n>=0){losses.push(n<=1?n*100:n)}
-      if(k.includes('round_trip_time') || k==='rtt' || k.includes('currentroundtriptime')){
-        let x=n;if(x>0&&x<10)x*=1000;rtts.push(x);
+      if((k.includes('round_trip_time')||k==='rtt'||k.includes('roundtriptime')||k.includes('rtt_ms'))&&!k.includes('total')){
+        const x=normalizeRttMs(k,n);if(x!=null)rtts.push(x);
       }
       if((k==='jitter'||k.includes('jitter_in_ms')) && !k.includes('buffer')){
         let x=n;if(x>0&&x<1)x*=1000;jitters.push(x);
@@ -91,7 +104,9 @@
     });
     if(bitrates.length)out.bitrateKbps=Math.max(...bitrates.filter(v=>v>=0));
     if(losses.length)out.lossPct=Math.max(...losses.filter(v=>v>=0));
-    if(rtts.length)out.rttMs=Math.max(...rtts.filter(v=>v>=0));
+    // Never select the largest RTT from every nested peer/audio/video object:
+    // one unrelated or stale candidate would poison the network verdict.
+    if(rtts.length){const sorted=rtts.filter(v=>v>=0&&v<=60000).sort((a,b)=>a-b);if(sorted.length)out.rttMs=sorted[Math.floor((sorted.length-1)/2)];}
     if(jitters.length)out.jitterMs=Math.max(...jitters.filter(v=>v>=0));
     if(available.length)out.availableKbps=Math.max(...available.filter(v=>v>=0));
     if(fpss.length)out.fps=Math.max(...fpss.filter(v=>v>=0));
@@ -99,6 +114,7 @@
   }
   function classify(s){
     const loss=s.lossPct, rtt=s.rttMs, jitter=s.jitterMs, avail=s.availableKbps;
+    if(loss==null&&rtt==null&&jitter==null&&avail==null)return 'waiting';
     if((loss!=null&&loss>=7)||(rtt!=null&&rtt>=800)||(jitter!=null&&jitter>=120)||(avail!=null&&avail<currentBitrate*.55))return 'critical';
     if((loss!=null&&loss>=2.5)||(rtt!=null&&rtt>=450)||(jitter!=null&&jitter>=60)||(avail!=null&&avail<currentBitrate*.78))return 'weak';
     if((loss!=null&&loss>=1)||(rtt!=null&&rtt>=250)||(jitter!=null&&jitter>=30))return 'fair';
@@ -127,7 +143,7 @@
   }
   function evaluate(s){
     const state=classify(s);s.state=state;lastStats=s;
-    if(!smart){postParent();return}
+    if(!smart||state==='waiting'){postParent();return}
     if(state==='critical'){
       criticalCount++;badCount++;goodCount=0;
       if(criticalCount>=2 && Date.now()-lastChange>1600){lower('สัญญาณวิกฤต',1);criticalCount=0;badCount=0}
