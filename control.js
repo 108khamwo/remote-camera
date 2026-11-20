@@ -1,4 +1,4 @@
-/* Remote Camera v0.11.34 — sender quality command ACK + receiver stats fixes */
+/* Remote Camera v0.11.35 — sender quality command ACK + receiver stats fixes */
 const $=s=>document.querySelector(s);
 const logEl=$('#log');
 let discoveryVdo=null, discoveryCtl=null, discoveryTimer=null, nativePresenceVdo=null;
@@ -81,46 +81,10 @@ function loadReceiverProfile(id){
   $('#fixedNetworkNote').hidden=!fixed;
   setQualityStatus('รอมือถือเชื่อมต่อ');
 }
-function syncVideoPreset(id=activeId(),reportedPreset='',force=false){
-  if(!id||id!==activeId())return;
-  if(activeCamera()?.transport==='direct'){
-    setQualityStatus('Native Sender · ปรับจากแอปผู้ส่ง');return;
-  }
-  const video=$('#videoPreset').value;
-  if(!VIDEO_PRESET_KEYS.has(video))return;
-  if(!lastTelemetry?.publishing||cleanId(lastTelemetry.streamID)!==id){
-    setQualityStatus('บันทึกแล้ว · รอมือถือส่งภาพ');return;
-  }
-  const matching=reportedPreset===video&&qualityMatchesActual(video,lastTelemetry.actual);
-  if(matching){
-    qualityErrorUntil.delete(id);
-    setQualityStatus(qualityCaptureStatus(video,lastTelemetry));return;
-  }
-  const now=Date.now();const old=lastVideoSync.get(id);
-  if(!force&&qualityErrorUntil.get(id)>now){
-    setQualityStatus('ตั้งค่าไม่สำเร็จ · กล้องจริง '+actualQualityLabel(lastTelemetry),{retry:true});return;
-  }
-  if(!force&&old?.video===video){
-    const delta=now-old.ts;
-    if(delta>=0&&delta<12000){setQualityStatus('กำลังปรับ · กล้องจริง '+actualQualityLabel(lastTelemetry));return;}
-    if(delta>=12000&&delta<45000){
-      setQualityStatus('ยังไม่ตรง · กล้องจริง '+actualQualityLabel(lastTelemetry),{retry:true});return;
-    }
-  }
-  // Telemetry may arrive even when the SDK misses peerConnected. Fresh sender
-  // telemetry is sufficient evidence to *attempt* a stream-scoped broadcast.
-  const freshTelemetry=Number(lastTelemetry?.ts||0)>Date.now()-7000;
-  if(!discoveryVdo||(!dataPeerCount&&!freshTelemetry)){
-    setQualityStatus('รอเชื่อมช่องควบคุม · กล้องจริง '+actualQualityLabel(lastTelemetry));return;
-  }
-  // Never queue duplicate quality changes when a previous one has not completed.
-  if([...pendingCommands.values()].some(x=>x.command==='quality'&&x.payload?.targetStream===id))return;
-  lastVideoSync.set(id,{video,ts:now});
-  setQualityStatus('กำลังตั้งค่า '+$('#videoPreset').selectedOptions[0].textContent);
-  if(!send('quality',{value:video,reason:'Control Center',force:!!force})){
-    setQualityStatus('ส่งคำสั่งไม่สำเร็จ',{retry:true});
-  }
-}
+// All quality changes are now performed by the Sender. Never send a remote
+// 'quality' command, including during telemetry/discovery/reconnect.
+function syncVideoPreset(){return;}
+
 let fixedSlots=[];
 function loadFixedSlots(){
   try{fixedSlots=JSON.parse(localStorage.getItem(FIXED_SLOT_STORE)||'[]')}catch{fixedSlots=[]}
@@ -874,16 +838,6 @@ function removeSelectedDirect(){
 
 loadFixedSlots();loadCameras();seedFixedSlots();renderFixedSlots();$('#room').value=systemRoom();if($('#roomText'))$('#roomText').textContent=$('#room').value;renderRegistry();updateObs();resetTelemetry();setControlStatus('ควบคุมกล้องจากหน้ามือถือ');
 setTimeout(()=>maybeAutoOpen(),350);
-$('#videoPreset').addEventListener('change',()=>{
-  storeReceiverProfile();
-  qualityErrorUntil.delete(activeId());
-  if(lastTelemetry?.publishing)syncVideoPreset(activeId(),String(lastTelemetry.presetKey||''),true);
-  else setQualityStatus('บันทึกแล้ว · รอมือถือเชื่อมต่อ');
-});
-$('#retryVideoPreset').addEventListener('click',()=>{
-  qualityErrorUntil.delete(activeId());
-  syncVideoPreset(activeId(),String(lastTelemetry?.presetKey||''),true);
-});
 RECEIVER_CONTROLS.forEach(id=>$('#'+id).addEventListener('change',()=>{
   if(isFixedSlot(activeId()))return;
   storeReceiverProfile();updateObs();renderMultiObs();reloadPreview();
@@ -931,4 +885,4 @@ $('#copy').onclick=async()=>{if(!$('#obsUrl').value)return;await navigator.clipb
 setInterval(markOffline,2000);
 window.addEventListener('beforeunload',()=>{try{discoveryCtl?.stop?.()}catch{};try{discoveryVdo?.stopPublishing?.()}catch{};try{discoveryVdo?.disconnect?.()}catch{};try{nativePresenceVdo?.disconnect?.()}catch{}});
 startDiscovery().catch(e=>{log(`Auto Discovery error: ${e.message}`);$('#discoveryStatus').innerHTML='<b>เชื่อมไม่สำเร็จ</b><span>กด “ค้นหากล้องใหม่” เพื่อลองอีกครั้ง</span>'});
-log(`v0.11.32 พร้อม — Receiver controls 720p/1080p / Native Direct + Auto Discovery + Native Telemetry • Offline grace ${OFFLINE_MS/1000}s`);
+log(`v0.11.32 พร้อม — Sender controls 720p/1080p / Native Direct + Auto Discovery + Native Telemetry • Offline grace ${OFFLINE_MS/1000}s`);

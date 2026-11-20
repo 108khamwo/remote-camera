@@ -1,4 +1,4 @@
-/* Remote Camera v0.11.34 — sender quality command ACK + receiver stats fixes */
+/* Remote Camera v0.11.35 — sender quality command ACK + receiver stats fixes */
 const $=s=>document.querySelector(s); const logEl=$('#log');
 function log(m){const t=new Date().toLocaleTimeString();logEl.textContent+=`[${t}] ${m}\n`;logEl.scrollTop=logEl.scrollHeight}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -78,6 +78,8 @@ const LINK_STREAM_PARAM=LINK_PARAMS.get('s');
 const FIXED_STREAM_ID=/^cam_fixed_[a-f0-9]{32}$/.test(LINK_STREAM_PARAM||'')?LINK_STREAM_PARAM:'';
 const BAD_FIXED_LINK=LINK_PARAMS.has('s')&&!FIXED_STREAM_ID;
 const FIXED_PRESET_KEY=FIXED_STREAM_ID?`remoteCamSlotPresetV1_${FIXED_STREAM_ID}`:'';
+const LOCAL_PRESET_KEY='remoteCamSenderPresetV1';
+let committedPresetKey='1080_30',qualitySwitchBusy=false;
 let DEVICE_ID='';
 function shortId(n=8){try{return crypto.randomUUID().replace(/-/g,'').slice(0,n)}catch{return (Math.random().toString(36).slice(2)+Date.now().toString(36)).slice(0,n)}}
 function normId(v){return String(v||'').trim().replace(/[^\w]/g,'_')}
@@ -100,13 +102,11 @@ function initIdentity(){
   if(!id.startsWith('cam_'))id=`cam_${platformSlug()}_${shortId(8)}`;
   $('#room').value=systemRoom();
   $('#streamId').value=id;
-  if(FIXED_STREAM_ID){
-    const savedPreset=localStorage.getItem(FIXED_PRESET_KEY)||'';
-    if(PRESETS[savedPreset])$('#quality').value=savedPreset;
-    const group=$('#senderQualityGroup'),managed=$('#senderQualityControlled');
-    if(group)group.hidden=true;
-    if(managed)managed.hidden=false;
-  }
+  // On any link (including permanent ones), only the local sender owns quality.
+  const savedPreset=localStorage.getItem(FIXED_PRESET_KEY||LOCAL_PRESET_KEY)||'';
+  if(PRESETS[savedPreset])$('#quality').value=savedPreset;
+  committedPresetKey=$('#quality').value;
+  updateSenderQualityUi();
   if($('#roomView'))$('#roomView').value=systemRoom();
   if($('#streamIdView'))$('#streamIdView').value=id;
   // Never inherit another shoot's nickname when opening a link on a shared phone.
@@ -853,6 +853,70 @@ async function configureZoom(track){
   }
 }
 
+// Simple quality controls on the live camera page. Never depend on Control Center.
+function saveSenderPreset(key){
+  try{localStorage.setItem(FIXED_PRESET_KEY||LOCAL_PRESET_KEY,key)}catch{}
+}
+function measuredQualityText(){
+  const t=cameraStream?.getVideoTracks?.()[0];
+  if(!t||t.readyState!=='live')return '';
+  const s=t.getSettings?.()||{};
+  return `${s.width||'?'}×${s.height||'?'} · ${Math.round(Number(s.frameRate||0))||'?'} FPS`;
+}
+function updateSenderQualityUi(message=''){
+  for(const [id,key] of [['#senderQuality1080','1080_30'],['#senderQuality720','720_30']]){
+    const btn=$(id);if(!btn)continue;
+    const active=committedPresetKey===key|| (key==='1080_30'&&committedPresetKey.startsWith('1080_')) || (key==='720_30'&&committedPresetKey.startsWith('720_'));
+    btn.classList.toggle('active',active);
+    btn.setAttribute('aria-pressed',String(active));
+    btn.disabled=qualitySwitchBusy;
+  }
+  const box=$('#senderQualityActual');
+  if(box){
+    const track=cameraStream?.getVideoTracks?.()[0];
+    const actual=measuredQualityText();
+    box.classList.remove('quality-error');
+    if(message){box.textContent=message;box.classList.toggle('quality-error',message.includes('ไม่สำเร็จ'));}
+    else if(actual){
+      const matched=videoSettingsMatchPreset(track?.getSettings?.(),committedPresetKey);
+      box.textContent=matched?actual:`จริง ${actual} · ไม่ตรงที่เลือก`;
+      box.classList.toggle('quality-error',!matched);
+    }else box.textContent=`พร้อมใช้ ${PRESETS[committedPresetKey]?.label||'1080p / 30'}`;
+  }
+}
+async function selectSenderQuality(value){
+  if(!PRESETS[value]||qualitySwitchBusy)return;
+  const before=committedPresetKey;
+  qualitySwitchBusy=true;
+  updateSenderQualityUi(`กำลังปรับ ${PRESETS[value].label}…`);
+  const menu=$('#quality');if(menu)menu.disabled=true;
+  let failureMessage='';
+  try{
+    if(cameraStream?.getVideoTracks?.().some(t=>t.readyState==='live')){
+      await setQualityPreset(value,'ผู้ส่งเลือกเอง',true);
+    }else{
+      // Before going LIVE, select the next capture mode without opening the camera.
+      menu.value=value;
+    }
+    committedPresetKey=value;
+    menu.value=value;
+    saveSenderPreset(value);
+    log(`ผู้ส่งเลือก ${PRESETS[value].label}`);
+    sendTelemetry();
+  }catch(e){
+    menu.value=before;
+    log(`ผู้ส่งเปลี่ยนคุณภาพไม่สำเร็จ: ${e.message}`);
+    const current=measuredQualityText();
+    failureMessage=`ไม่สำเร็จ · ${current||'ลองใหม่'}`;
+    // The browser may keep the previous or an intermediate capture size.
+    // Do not pretend that the selected resolution has taken effect.
+  }finally{
+    qualitySwitchBusy=false;
+    if(menu)menu.disabled=false;
+  }
+  updateSenderQualityUi(failureMessage);
+}
+
 async function openCamera({facing=currentFacing,deviceId=''}={}){
   if(openingCamera)return;
   if(!navigator.mediaDevices?.getUserMedia)throw new Error('เบราว์เซอร์ไม่รองรับ getUserMedia');
@@ -900,6 +964,7 @@ async function openCamera({facing=currentFacing,deviceId=''}={}){
     startFrameMeter();updateCameraStatus(nextTrack);await configureZoom(nextTrack);await listDevices();
     if(oldStream&&oldStream!==nextStream){oldStream.getTracks().forEach(t=>{if(t!==oldTrack||t.readyState!=='ended')try{t.stop()}catch{}})}
     log(`เปิดกล้อง: ${nextTrack.label||facing} / ${PLATFORM} / hint=${q().hint}`);
+    if(!qualitySwitchBusy)updateSenderQualityUi();
     return nextTrack;
   }finally{openingCamera=false}
 }
@@ -1078,7 +1143,7 @@ async function handleRemote(d,sourceUuid=''){
     else if(d.command==='zoomDrive')setZoomDrive(d.direction,{speed:d.speed});
     else if(d.command==='zoomStop')setZoomDrive(0,{speed:d.speed});
     else if(d.command==='device'&&d.deviceId)await openCamera({deviceId:d.deviceId});
-    else if(d.command==='quality'&&d.value)await setQualityPreset(d.value,d.reason||'Remote quality',d.force===true);
+    else if(d.command==='quality')throw new Error('ปรับความละเอียดจากมือถือผู้ส่งเท่านั้น');
     else known=false;
     if(!known)throw new Error(`ไม่รู้จักคำสั่ง ${d.command}`);
     if(d.commandId)processedRemoteCommands.set(d.commandId,{ts:Date.now(),done:true,ok:true,message:''});
@@ -1107,7 +1172,7 @@ async function stopAll(){
   outStream=null;
   video.srcObject=null;
   setScreenRest(false);releaseWakeLock();
-  $('#liveBadge').textContent='OFFLINE';updateSimpleStatus();$('#liveBadge').classList.remove('ok');$('#statRtc').textContent='OFFLINE';$('#statMic').textContent='-';log('หยุดทั้งหมด')
+  $('#liveBadge').textContent='OFFLINE';updateSimpleStatus();$('#liveBadge').classList.remove('ok');$('#statRtc').textContent='OFFLINE';$('#statMic').textContent='-';updateSenderQualityUi();log('หยุดทั้งหมด')
 }
 
 $('#startCamera').onclick=()=>openCamera({facing:currentFacing}).catch(e=>log(`Camera error: ${e.message}`));
@@ -1151,12 +1216,9 @@ function bindHoldZoom(btn,dir){
   ['contextmenu','selectstart','dragstart'].forEach(type=>btn.addEventListener(type,block));
 }
 bindHoldZoom($('#zoomOutBtn'),-1);bindHoldZoom($('#zoomInBtn'),1);
-$('#quality').onchange=async()=>{
-  if(FIXED_STREAM_ID)return;
-  smartProfile='Manual';$('#statSmartProfile').textContent=smartProfile;
-  log(`เปลี่ยนคุณภาพเป็น ${q().label} / hint=${q().hint}`);
-  if(cameraStream){try{await openCamera({facing:currentFacing,deviceId:explicitDeviceId})}catch(e){log(`Quality switch error: ${e.message}`)}}
-};
+$('#senderQuality1080').onclick=()=>selectSenderQuality('1080_30');
+$('#senderQuality720').onclick=()=>selectSenderQuality('720_30');
+$('#quality').onchange=()=>selectSenderQuality($('#quality').value);
 function openSheet(id){const el=$(id);if(el){el.hidden=false;document.body.style.overflow='hidden'}}
 function closeSheets(){['#settingsSheet','#messageSheet'].forEach(id=>{const el=$(id);if(el)el.hidden=true});document.body.style.overflow=''}
 $('#settingsOpenBtn').onclick=()=>{openSheet('#settingsSheet');listMicrophones().catch(()=>{})};
@@ -1201,9 +1263,9 @@ document.addEventListener('visibilitychange',()=>{
   }
 });
 window.addEventListener('beforeunload',()=>stopAll());
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=01132').catch(()=>{});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=01135').catch(()=>{});
 $('#statHint').textContent=q().hint;
 $('#statSmartProfile').textContent=smartProfile;
 initIdentity();updateSimpleStatus();updateMicUi();updateMicGainUi();updateMicNoiseUi();
 $('#newStreamId').onclick=generateNewStreamId;
-log(`v0.11.32 พร้อมใช้งาน — Receiver controlled video preset / Mic Volume & Noise Reduction / Control Data Hub — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
+log(`v0.11.32 พร้อมใช้งาน — Sender quick quality presets / Mic Volume & Noise Reduction / Control Data Hub — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);

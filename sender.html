@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="mobile-web-app-capable" content="yes">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=01134">
+  <link rel="stylesheet" href="styles.css?v=01135">
   <title>ผู้ส่ง | ระบบ Live Streaming ระยะไกลผ่านมือถือ</title>
 </head>
 <body class="sender-call-body">
@@ -65,6 +65,16 @@
     </div>
   </section>
 
+  <section class="sender-quick-quality" aria-label="ปรับคุณภาพภาพจากมือถือ">
+    <div class="sender-quick-quality-head">
+      <span>คุณภาพภาพ</span><span id="senderQualityActual" role="status" aria-live="polite">รอเปิดกล้อง</span>
+    </div>
+    <div class="sender-quick-quality-buttons">
+      <button id="senderQuality1080" type="button" class="sender-quality-button" aria-pressed="true"><strong>1080p</strong><small>คมชัด</small></button>
+      <button id="senderQuality720" type="button" class="sender-quality-button" aria-pressed="false"><strong>720p</strong><small>ลื่นขึ้น</small></button>
+    </div>
+  </section>
+
   <section class="sender-call-controls">
     <button id="zoomOutBtn" class="call-control-btn zoom-hold-btn" type="button" hidden aria-label="ซูมออก">
       <span class="call-control-symbol">−</span><span>Zoom</span>
@@ -96,7 +106,7 @@
       <header class="sender-sheet-header"><strong>ตั้งค่า</strong><button class="sheet-close-btn" type="button" data-close-settings>✕</button></header>
       <div class="sender-sheet-scroll">
         <div id="senderQualityGroup" class="settings-group">
-          <label>คุณภาพภาพ</label>
+          <label for="quality">ความละเอียด / FPS</label>
           <select id="quality">
             <option value="1080_30" selected>1080p / 30 — คมชัด</option>
             <option value="1080_60">1080p / สูงสุด 60</option>
@@ -106,7 +116,7 @@
           </select>
         </div>
 
-        <div id="senderQualityControlled" class="settings-group receiver-managed-label" hidden>คุณภาพภาพ: ควบคุมจากฝั่งรับ</div>
+        
         <div class="settings-group">
           <label for="micDeviceSelect">ไมโครโฟน</label>
           <select id="micDeviceSelect" aria-label="เลือกไมโครโฟน">
@@ -222,6 +232,6 @@
     <div id="screenRestHint" class="sender-rest-hint">พักหน้าจอแล้ว<br><small>ภาพและเสียงยังส่งตามปกติ • แตะเพื่อกลับ</small></div>
   </div>
 </main>
-<script src="sdk-loader.js?v=01134"></script><script src="sender.js?v=01134"></script><script src="fullscreen.js?v=01134"></script>
+<script src="sdk-loader.js?v=01135"></script><script src="sender.js?v=01135"></script><script src="fullscreen.js?v=01135"></script>
 </body>
 </html>

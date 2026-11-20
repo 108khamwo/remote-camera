@@ -1,0 +1,12 @@
+Remote Camera v0.11.35 — SENDER QUICK QUALITY
+
+- Receiver no longer controls resolution/FPS. Quality card removed from Control Center; sender quality messages no longer broadcast.
+- Sender (including permanent event links) has large 1080p/720p quick buttons outside settings. Both use 30 FPS for consistent live performance.
+- Sender settings retain advanced 1080p/720p and up to 60 FPS where supported.
+- Sender saves choice locally per permanent link. Other links save their own local default.
+- If LIVE, change tries current camera track constraints before resorting to reopen + WebRTC replaceTrack. Audio continues on its existing track.
+- Actual capture size/FPS shown on sender. Unsupported resolutions are NOT reported as successful.
+- Receiver still monitors the feed, telemetry and network, and OBS / permanent sender URL stay unchanged.
+- The receiver Network / Bitrate / Buffer controls are not changed by this patch. For fixed OBS links, existing defaults still apply.
+
+Deployment: replace the entire site's files on GitHub Pages. Close/reopen both sender and control tabs after upload; use a fresh reload. Test 1080p/30 then tap 720p on Sender while LIVE; check the actual size shown and Receiver Telemetry. No real hardware WebRTC tests were possible in this environment.
