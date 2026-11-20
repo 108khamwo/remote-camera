@@ -3,6 +3,12 @@ function log(m){const t=new Date().toLocaleTimeString();logEl.textContent+=`[${t
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 let cameraStream=null,audioStream=null,outStream=null,vdo=null,messageVdo=null,messageReady=false,messageViewPending=false,messageRetryTimer=null,currentFacing='environment',isPublishing=false,lastRemoteTs=0;
 let micMuted=false,explicitMicDeviceId='',micSwitchPromise=null;
+const MIC_GAIN_KEY='remoteCamMicGainV1',MIC_NOISE_KEY='remoteCamMicNoiseV1';
+const savedMicGain=localStorage.getItem(MIC_GAIN_KEY);
+let micGainPercent=savedMicGain===null?100:Math.max(0,Math.min(200,Number(savedMicGain)||0));
+let micNoiseSuppressionEnabled=localStorage.getItem(MIC_NOISE_KEY)==='1';
+let micProcessor=null; // Browser Web Audio: raw capture → gain → outgoing WebRTC track
+
 const processedRemoteCommands=new Map();
 let explicitDeviceId='', openingCamera=false;
 let peerIds=new Set();
@@ -26,6 +32,8 @@ function updateMicUi(){
   }
   const live=audioStream?.getAudioTracks?.()[0];
   if(live)live.enabled=!micMuted;
+  const outgoing=micProcessor?.outgoingTrack;
+  if(outgoing&&outgoing!==live)outgoing.enabled=!micMuted;
   const stat=$('#statMic');
   if(stat)stat.textContent=audioStream?.getAudioTracks?.()[0]?.readyState==='live'?(micMuted?'MUTED':'ON'):(micMuted?'ปิดเสียง':'-');
 }
@@ -58,7 +66,7 @@ const IS_ANDROID=/Android/i.test(UA);
 const IS_IOS=/iPhone|iPad|iPod/i.test(UA) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
 const IS_SAMSUNG=/SamsungBrowser/i.test(UA);
 const PLATFORM=IS_ANDROID?'Android':IS_IOS?'iOS':'Browser';
-const BROWSER=IS_SAMSUNG?'Samsung Internet':/CriOS|Chrome/i.test(UA)?'Chrome':/Safari/i.test(UA)?'Safari':'Web Browser';
+const BROWSER=IS_SAMSUNG?'Samsung Internet':/FxiOS|Firefox/i.test(UA)?'Firefox':/CriOS|Chrome/i.test(UA)?'Chrome':/Safari/i.test(UA)?'Safari':'Web Browser';
 const DEVICE_KEY='remoteCamPhysicalDeviceIdV1';
 let DEVICE_ID='';
 function shortId(n=8){try{return crypto.randomUUID().replace(/-/g,'').slice(0,n)}catch{return (Math.random().toString(36).slice(2)+Date.now().toString(36)).slice(0,n)}}
@@ -264,22 +272,103 @@ async function listDevices(){
   $('#statDevices').textContent=`${cams.length} กล้อง`;
 }
 
-// Audio input selection is independent of camera selection. Device IDs are not
-// persisted because browsers can rotate them when site permissions change.
+// v0.11.28: audio input controls independent of the camera path.
+// The raw microphone stays separate from the WebRTC audio track so software
+// gain can be changed in real time without reopening the microphone.
 function micCaptureOptions(deviceId=''){
-  return {audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false,
+  return {audio:{echoCancellation:false,noiseSuppression:micNoiseSuppressionEnabled,autoGainControl:false,
     ...(deviceId?{deviceId:{exact:deviceId}}:{})},video:false};
 }
 function activeMicTrack(){return audioStream?.getAudioTracks?.()[0]||null}
+function micOutgoingTrack(){return micProcessor?.outgoingTrack||activeMicTrack()}
 function micName(track){return track?.label?.trim()||'ไมโครโฟนที่ระบบเลือก'}
 function micStatus(message){const el=$('#micDeviceStatus');if(el)el.textContent=message}
+function noiseSupported(){return !!navigator.mediaDevices?.getSupportedConstraints?.().noiseSuppression}
+function updateMicNoiseUi(message=''){
+  const toggle=$('#micNoiseToggle'),el=$('#micNoiseStatus');
+  const supported=noiseSupported();
+  if(toggle){toggle.checked=micNoiseSuppressionEnabled;toggle.disabled=!supported}
+  if(!el)return;
+  if(message){el.textContent=message;return}
+  if(!supported){el.textContent='เบราว์เซอร์นี้ไม่รองรับการตั้งค่าลดเสียงรบกวน';return}
+  const track=activeMicTrack();
+  if(!track?.readyState||track.readyState!=='live'){
+    el.textContent=`${micNoiseSuppressionEnabled?'เปิด':'ปิด'} • จะใช้ค่าเมื่อเริ่มเปิดไมค์`;
+    return;
+  }
+  const current=track.getSettings?.().noiseSuppression;
+  if(typeof current==='boolean'){
+    el.textContent=current===micNoiseSuppressionEnabled
+      ?`สถานะที่เบราว์เซอร์รายงาน: ${current?'เปิด':'ปิด'}`
+      :`เบราว์เซอร์ยังรายงานว่า ${current?'เปิด':'ปิด'} • อาจไม่รองรับการเปลี่ยนค่านี้`;
+  }else{
+    el.textContent=`ส่งค่าขอ${micNoiseSuppressionEnabled?'เปิด':'ปิด'}แล้ว • เบราว์เซอร์ไม่รายงานสถานะจริง`;
+  }
+}
+function updateMicGainUi(){
+  const readout=$('#micGainValue'),slider=$('#micGainRange'),hint=$('#micGainStatus');
+  if(readout)readout.textContent=`${micGainPercent}%`;
+  if(slider&&Number(slider.value)!==micGainPercent)slider.value=String(micGainPercent);
+  if(hint)hint.textContent=micProcessor?.fallback
+    ?'เบราว์เซอร์นี้ไม่สามารถปรับความดังได้ (ส่งเสียงไมค์ตรง)'
+    :micGainPercent>100?'ขยายเสียงแล้ว • ถ้าเสียงแตก ให้ลดลงใกล้ 100%'
+     :'100% = เสียงเดิม • 0% = เงียบ • สูงสุด 200%';
+  if(slider)slider.disabled=!!micProcessor?.fallback;
+  const reset=$('#micGainResetBtn');if(reset)reset.disabled=!!micProcessor?.fallback;
+}
+function setMicGain(value){
+  micGainPercent=Math.max(0,Math.min(200,Math.round(Number(value)/5)*5));
+  if(!Number.isFinite(micGainPercent))micGainPercent=100;
+  if(micProcessor?.gainNode&&micProcessor.context){
+    const gain=micProcessor.gainNode.gain;
+    // Smooth the gain to avoid clicks/pop while changing the slider during LIVE.
+    gain.setTargetAtTime(micGainPercent/100,micProcessor.context.currentTime,0.015);
+    if(micProcessor.context.state==='suspended')micProcessor.context.resume().catch(()=>{});
+  }
+  localStorage.setItem(MIC_GAIN_KEY,String(micGainPercent));
+  updateMicGainUi();
+}
+function closeMicProcessor(processor){
+  if(!processor)return;
+  try{processor.source?.disconnect()}catch{}
+  try{processor.gainNode?.disconnect()}catch{}
+  if(processor.outgoingTrack&&processor.outgoingTrack!==processor.rawTrack){
+    try{processor.outgoingTrack.stop()}catch{}
+  }
+  if(processor.context&&processor.context.state!=='closed'){
+    processor.context.close().catch(()=>{});
+  }
+}
+function createMicProcessor(stream){
+  const rawTrack=stream.getAudioTracks()[0];
+  const Context=window.AudioContext||window.webkitAudioContext;
+  if(!Context)return {rawTrack,outgoingTrack:rawTrack,fallback:true};
+  let context;
+  try{
+    context=new Context({latencyHint:'interactive'});
+    const source=context.createMediaStreamSource(stream);
+    const gainNode=context.createGain();
+    const destination=context.createMediaStreamDestination();
+    gainNode.gain.value=micGainPercent/100;
+    try{destination.channelCount=1}catch{}
+    source.connect(gainNode);
+    gainNode.connect(destination);
+    const outgoingTrack=destination.stream.getAudioTracks()[0];
+    if(!outgoingTrack)throw new Error('ไม่มี audio track จาก Web Audio');
+    outgoingTrack.enabled=!micMuted;
+    if(context.state==='suspended')context.resume().catch(e=>log(`AudioContext resume: ${e.message}`));
+    return {context,source,gainNode,destination,rawTrack,outgoingTrack,fallback:false};
+  }catch(e){
+    if(context&&context.state!=='closed')context.close().catch(()=>{});
+    log(`Web Audio gain unavailable: ${e.message}`);
+    return {rawTrack,outgoingTrack:rawTrack,fallback:true};
+  }
+}
 async function listMicrophones({requestPermission=false}={}){
   const md=navigator.mediaDevices;
   if(!md?.enumerateDevices){micStatus('เบราว์เซอร์นี้ไม่รองรับการแสดงรายชื่อไมค์');return}
   let temporary=null;
   try{
-    // An explicit tap on Refresh is a user gesture: request permission so
-    // browsers can reveal device names rather than anonymous audioinput entries.
     if(requestPermission && activeMicTrack()?.readyState!=='live'){
       temporary=await md.getUserMedia({audio:true,video:false});
     }
@@ -306,19 +395,21 @@ async function listMicrophones({requestPermission=false}={}){
   }finally{temporary?.getTracks?.().forEach(t=>t.stop())}
 }
 async function selectMicrophone(deviceId=''){
-  // Serialize mic capture + live WebRTC replacement to prevent duplicate tracks.
+  // Serialize capture and SDK replaceTrack, retaining the old mic on failure.
   if(micSwitchPromise)await micSwitchPromise;
   const change=(async()=>{
-    const oldStream=audioStream,oldTrack=activeMicTrack();
-    let newStream=null;
+    const oldStream=audioStream,oldProcessor=micProcessor,oldTrack=micOutgoingTrack();
+    let newStream=null,newProcessor=null;
     try{
       micStatus('กำลังเชื่อมต่อไมโครโฟน…');
       newStream=await navigator.mediaDevices.getUserMedia(micCaptureOptions(deviceId));
-      const nextTrack=newStream.getAudioTracks()[0];
-      if(!nextTrack)throw new Error('เบราว์เซอร์ไม่ได้ส่ง Audio Track กลับมา');
+      const rawTrack=newStream.getAudioTracks()[0];
+      if(!rawTrack)throw new Error('เบราว์เซอร์ไม่ได้ส่ง Audio Track กลับมา');
+      rawTrack.enabled=!micMuted;
+      newProcessor=createMicProcessor(newStream);
+      const nextTrack=newProcessor.outgoingTrack;
+      if(!nextTrack)throw new Error('ไม่มี Audio Track สำหรับส่งไลฟ์');
       nextTrack.enabled=!micMuted;
-      // VDO.Ninja SDK 1.5.5 can replace tracks on the existing connection;
-      // do not stop the old track until replacement has succeeded.
       if(isPublishing&&vdo&&oldTrack){
         await vdo.replaceTrack(oldTrack,nextTrack);
       }
@@ -327,14 +418,17 @@ async function selectMicrophone(deviceId=''){
         if(!outStream.getAudioTracks().includes(nextTrack))outStream.addTrack(nextTrack);
       }
       audioStream=newStream;
+      micProcessor=newProcessor;
       explicitMicDeviceId=deviceId;
       if(oldStream&&oldStream!==newStream)oldStream.getTracks().forEach(t=>t.stop());
-      updateMicUi();
-      log(`ไมโครโฟนพร้อม: ${micName(nextTrack)}${micMuted?' (MUTED)':''}`);
+      closeMicProcessor(oldProcessor);
+      updateMicUi();updateMicGainUi();updateMicNoiseUi();
+      log(`ไมโครโฟนพร้อม: ${micName(rawTrack)} / Gain ${micGainPercent}% / Noise ${micNoiseSuppressionEnabled?'ON':'OFF'}${micMuted?' (MUTED)':''}`);
       await listMicrophones();
       if(isPublishing)setTimeout(sendTelemetry,50);
-      return nextTrack;
+      return rawTrack;
     }catch(e){
+      closeMicProcessor(newProcessor);
       if(newStream)newStream.getTracks().forEach(t=>t.stop());
       micStatus(`เลือกไมค์ไม่สำเร็จ: ${e.message} • ลองหยุดส่งภาพแล้วเลือกใหม่`);
       log(`Mic switch error: ${e.name||''} ${e.message}`);
@@ -343,6 +437,37 @@ async function selectMicrophone(deviceId=''){
   })();
   micSwitchPromise=change;
   try{return await change}finally{if(micSwitchPromise===change)micSwitchPromise=null}
+}
+async function setMicNoiseSuppression(enabled){
+  if(!noiseSupported()){
+    updateMicNoiseUi('เบราว์เซอร์นี้ไม่รองรับการลดเสียงรบกวน');return;
+  }
+  const previous=micNoiseSuppressionEnabled;
+  micNoiseSuppressionEnabled=!!enabled;
+  const toggle=$('#micNoiseToggle');if(toggle)toggle.disabled=true;
+  try{
+    if(micSwitchPromise)await micSwitchPromise;
+    const track=activeMicTrack();
+    if(track?.readyState==='live'){
+      // Prefer a live constraint change without replacing the WebRTC track.
+      let applied=false;
+      if(track.applyConstraints){
+        try{
+          await track.applyConstraints({noiseSuppression:micNoiseSuppressionEnabled});
+          applied=track.getSettings?.().noiseSuppression===micNoiseSuppressionEnabled;
+        }catch(e){log(`Noise applyConstraints fallback: ${e.message}`)}
+      }
+      // Some browsers only take noiseSuppression when opening a new capture.
+      if(!applied)await selectMicrophone(explicitMicDeviceId);
+    }
+    localStorage.setItem(MIC_NOISE_KEY,micNoiseSuppressionEnabled?'1':'0');
+    updateMicNoiseUi();
+    log(`Noise suppression requested: ${micNoiseSuppressionEnabled?'ON':'OFF'}`);
+  }catch(e){
+    micNoiseSuppressionEnabled=previous;
+    updateMicNoiseUi(`เปลี่ยนลดเสียงรบกวนไม่สำเร็จ: ${e.message}`);
+    log(`Noise suppression error: ${e.message}`);
+  }finally{if(toggle)toggle.disabled=!noiseSupported()}
 }
 async function ensureMic(){
   if(micSwitchPromise)await micSwitchPromise;
@@ -707,7 +832,7 @@ async function buildOutStream(){
   await ensureMic();
   const vt=cameraStream.getVideoTracks()[0];
   try{vt.contentHint=q().hint}catch{}
-  outStream=new MediaStream([vt,...audioStream.getAudioTracks()]);
+  outStream=new MediaStream([vt,micOutgoingTrack()]);
   const s=vt.getSettings();
   log(`Output ใช้ Camera Track โดยตรง ${s.width||'?'}×${s.height||'?'} @${Math.round(s.frameRate||0)||'?'} / hint=${q().hint}`);
   return outStream;
@@ -789,7 +914,8 @@ async function stopAll(){
   frameMeterGeneration++;measuredCameraFps=0;
   if(cameraStream){cameraStream.getTracks().forEach(t=>t.stop());cameraStream=null}
   if(audioStream){audioStream.getTracks().forEach(t=>t.stop());audioStream=null}
-  updateMicUi();
+  closeMicProcessor(micProcessor);micProcessor=null;
+  updateMicUi();updateMicGainUi();updateMicNoiseUi();
   outStream=null;
   video.srcObject=null;
   setScreenRest(false);releaseWakeLock();
@@ -847,6 +973,9 @@ function closeSheets(){['#settingsSheet','#messageSheet'].forEach(id=>{const el=
 $('#settingsOpenBtn').onclick=()=>{openSheet('#settingsSheet');listMicrophones().catch(()=>{})};
 $('#messageOpenBtn').onclick=()=>openSheet('#messageSheet');
 $('#micToggleBtn').onclick=()=>setMicMuted(!micMuted);
+$('#micGainRange').addEventListener('input',e=>setMicGain(e.target.value));
+$('#micGainResetBtn').onclick=()=>setMicGain(100);
+$('#micNoiseToggle').addEventListener('change',e=>setMicNoiseSuppression(e.target.checked));
 $('#refreshMicBtn').onclick=async()=>{
   const btn=$('#refreshMicBtn');btn.disabled=true;
   try{await listMicrophones({requestPermission:true})}finally{btn.disabled=false}
@@ -868,11 +997,16 @@ $('#incomingMessageToast').addEventListener('click',()=>openSheet('#messageSheet
 $('#senderMessageSend').onclick=()=>{const input=$('#senderMessageInput');if(sendSenderMessage(input.value)){input.value=''}};
 $('#senderMessageInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#senderMessageSend').click()}});
 document.querySelectorAll('[data-quick-reply]').forEach(btn=>btn.addEventListener('click',()=>{if(sendSenderMessage(btn.dataset.quickReply||''))closeSheets()}));
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&isPublishing)requestWakeLock()});
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible'&&isPublishing){
+    requestWakeLock();
+    if(micProcessor?.context?.state==='suspended')micProcessor.context.resume().catch(()=>{});
+  }
+});
 window.addEventListener('beforeunload',()=>stopAll());
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=01112').catch(()=>{});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=01128').catch(()=>{});
 $('#statHint').textContent=q().hint;
 $('#statSmartProfile').textContent=smartProfile;
-initIdentity();updateSimpleStatus();updateMicUi();
+initIdentity();updateSimpleStatus();updateMicUi();updateMicGainUi();updateMicNoiseUi();
 $('#newStreamId').onclick=generateNewStreamId;
-log(`v0.11.27 พร้อมใช้งาน — Mic Input Selection / Control Data Hub — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
+log(`v0.11.28 พร้อมใช้งาน — Mic Volume & Noise Reduction / Control Data Hub — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);

@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="mobile-web-app-capable" content="yes">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=01127">
+  <link rel="stylesheet" href="styles.css?v=01128">
   <title>ผู้ส่ง | ระบบ Live Streaming ระยะไกลผ่านมือถือ</title>
 </head>
 <body class="sender-call-body">
@@ -113,6 +113,23 @@
           <div id="micDeviceHint" class="mini settings-hint">ชื่อไมค์จะขึ้นหลังอนุญาตใช้ไมโครโฟน</div>
         </div>
 
+        <div class="settings-group mic-audio-settings">
+          <div class="mic-setting-head">
+            <label for="micGainRange">ความดังไมโครโฟน</label>
+            <output id="micGainValue" for="micGainRange">100%</output>
+          </div>
+          <div class="mic-gain-row">
+            <input id="micGainRange" type="range" min="0" max="200" step="5" value="100" aria-label="ปรับความดังไมโครโฟน">
+            <button id="micGainResetBtn" class="ghost" type="button">100%</button>
+          </div>
+          <div id="micGainStatus" class="mini settings-hint">100% = เสียงเดิม • 0% = เงียบ • สูงสุด 200%</div>
+          <label class="mic-noise-control" for="micNoiseToggle">
+            <span class="mic-noise-copy"><strong>ลดเสียงรบกวน (Noise Suppression)</strong><small>ลดเสียงรอบข้าง เช่น พัดลม/เสียงฮัม</small></span>
+            <input id="micNoiseToggle" type="checkbox" role="switch" aria-label="เปิดหรือปิดระบบลดเสียงรบกวน">
+          </label>
+          <div id="micNoiseStatus" class="mini settings-hint" role="status">ปิด • เสียงธรรมชาติ</div>
+        </div>
+
         <div class="settings-group">
           <label>สลับกล้อง</label>
           <div class="settings-button-row">
@@ -200,6 +217,6 @@
     <div id="screenRestHint" class="sender-rest-hint">พักหน้าจอแล้ว<br><small>ภาพและเสียงยังส่งตามปกติ • แตะเพื่อกลับ</small></div>
   </div>
 </main>
-<script src="sdk-loader.js?v=01111"></script><script src="sender.js?v=01127"></script><script src="fullscreen.js?v=01124"></script>
+<script src="sdk-loader.js?v=01111"></script><script src="sender.js?v=01128"></script><script src="fullscreen.js?v=01124"></script>
 </body>
 </html>

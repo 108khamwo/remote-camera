@@ -572,3 +572,21 @@ body.fullscreen-active .sender-call-controls{flex:none}
 .camera-chip.direct .presence-dot{background:#27b8ff;box-shadow:0 0 0 3px rgba(39,184,255,.14)}
 .camera-chip.direct{border-color:rgba(39,184,255,.38)}
 @media(max-width:620px){.native-direct-add{grid-template-columns:1fr}.native-direct-add button{width:100%}}
+
+/* v0.11.28 — compact microphone gain and Firefox noise suppression controls */
+.mic-setting-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 8px}
+.mic-setting-head>label{font-size:13px;color:#d5e8f5;font-weight:700;margin:0}
+#micGainValue{font-size:17px;font-weight:800;color:#7de2ff;min-width:56px;text-align:right;font-variant-numeric:tabular-nums}
+.mic-gain-row{display:grid;grid-template-columns:minmax(0,1fr) 70px;gap:10px;align-items:center}
+#micGainRange{width:100%;height:45px;padding:0 4px;accent-color:#00c0fa;border:0;background:transparent;touch-action:pan-x;cursor:pointer}
+#micGainResetBtn{height:42px;padding:8px 4px;font-size:13px}
+.mic-noise-control{display:flex!important;align-items:center;justify-content:space-between;gap:14px;margin:16px 0 0!important;padding:12px 13px;background:#102536;border:1px solid #29475c;border-radius:13px;cursor:pointer}
+.mic-noise-copy{min-width:0;display:flex;flex-direction:column;gap:4px}
+.mic-noise-copy strong{font-size:13px;color:#e2f2fc;line-height:1.4}
+.mic-noise-copy small{font-size:11px;color:#a2c1d4;line-height:1.4}
+#micNoiseToggle{flex:0 0 auto;appearance:none;-webkit-appearance:none;width:50px;height:29px;margin:0;padding:0;border-radius:40px;border:1px solid #37566b;background:#203749;position:relative;transition:background .15s;cursor:pointer}
+#micNoiseToggle::before{content:"";position:absolute;left:3px;top:3px;width:21px;height:21px;border-radius:50%;background:#d2e1e9;transition:transform .15s}
+#micNoiseToggle:checked{background:#00a9dd;border-color:#00c0fa}
+#micNoiseToggle:checked::before{transform:translateX(21px);background:#fff}
+#micNoiseToggle:focus-visible{outline:2px solid #c4f3ff;outline-offset:3px}
+#micNoiseToggle:disabled{opacity:.45;cursor:not-allowed}
