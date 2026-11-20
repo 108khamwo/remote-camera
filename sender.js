@@ -912,7 +912,7 @@ function videoSettingsMatchPreset(settings,presetKey){
   const p=PRESETS[presetKey];if(!p)return false;
   const w=Number(settings?.width||0),h=Number(settings?.height||0);
   if(!w||!h)return false;
-  // Some mobile cameras report rotated dimensions when held vertically.
+  // A rotated mobile sensor is still the same 720p or 1080p pixel count.
   return (Math.abs(w-p.w)<=16&&Math.abs(h-p.h)<=16)||
          (Math.abs(h-p.w)<=16&&Math.abs(w-p.h)<=16);
 }
@@ -920,56 +920,78 @@ function actualVideoSize(track){
   const s=track?.getSettings?.()||{};
   return `${s.width||'?'}×${s.height||'?'}`;
 }
-async function setQualityPreset(value,reason='Remote'){
+function captureOrientationSizes(preset,settings={}){
+  const landscape=[preset.w,preset.h],portrait=[preset.h,preset.w];
+  return Number(settings.height||0)>Number(settings.width||0)
+    ? [portrait,landscape] : [landscape,portrait];
+}
+async function applyQualityToTrack(track,preset,presetKey){
+  if(!track?.applyConstraints||track.readyState!=='live')return false;
+  const old=track.getSettings?.()||{};
+  let lastError=null;
+  for(const [w,h]of captureOrientationSizes(preset,old)){
+    try{
+      await track.applyConstraints({
+        width:{exact:w},height:{exact:h},
+        frameRate:{ideal:preset.fps,max:preset.fps}
+      });
+      const updated=track.getSettings?.()||{};
+      if(videoSettingsMatchPreset(updated,presetKey)){
+        try{track.contentHint=preset.hint}catch{}
+        updateCameraStatus(track);
+        log(`ตั้งค่ากล้องบน Track เดิม: ${actualVideoSize(track)} @${Number(updated.frameRate||0).toFixed(0)} fps`);
+        return true;
+      }
+    }catch(e){lastError=e;log(`ปรับ Track ${w}×${h}: ${e.name||'Error'} ${e.message||''}`)}
+  }
+  if(lastError)log(`ไม่สามารถปรับ Track เดิมได้: ${lastError.message||lastError}`);
+  return false;
+}
+async function setQualityPreset(value,reason='Remote',force=false){
   if(!PRESETS[value])throw new Error(`ไม่พบ preset ${value}`);
-  // A racing camera switch must not count as a successful quality change.
   for(let i=0;openingCamera&&i<75;i++)await sleep(80);
   if(openingCamera)throw new Error('กล้องกำลังสลับอยู่ กรุณาลองใหม่');
-  const previous=$('#quality').value;
+  const previous=$('#quality').value,p=PRESETS[value];
   const firstTrack=cameraStream?.getVideoTracks?.()[0];
-  if(previous===value&&firstTrack&&videoSettingsMatchPreset(firstTrack.getSettings?.(),value)){
+  // A preset is applied only once unless the receiver explicitly retries it.
+  // For 60 FPS mode, 30 FPS is a valid device limitation, not a fake 60 FPS ACK.
+  if(!force&&previous===value&&firstTrack&&videoSettingsMatchPreset(firstTrack.getSettings?.(),value)){
     smartProfile=reason;$('#statSmartProfile').textContent=smartProfile;
     if(FIXED_PRESET_KEY)localStorage.setItem(FIXED_PRESET_KEY,value);
     sendTelemetry();return;
   }
   $('#quality').value=value;
   try{
-    if(firstTrack?.readyState==='live'&&typeof firstTrack.applyConstraints==='function'){
-      const p=PRESETS[value];
-      try{
-        // This changes capture settings in place, keeping the WebRTC video track
-        // and microphone untouched whenever the browser supports it.
-        await firstTrack.applyConstraints({
-          width:{exact:p.w},height:{exact:p.h},
-          frameRate:{ideal:p.fps,max:p.fps}
-        });
-        if(videoSettingsMatchPreset(firstTrack.getSettings?.(),value)){
-          try{firstTrack.contentHint=p.hint}catch{}
-          updateCameraStatus(firstTrack);
-          log(`เปลี่ยนความละเอียดบน Video Track เดิม: ${actualVideoSize(firstTrack)}`);
-        }else log(`applyConstraints ไม่ตรง Preset: ${actualVideoSize(firstTrack)}`);
-      }catch(e){log(`applyConstraints: ${e.name||'Error'} ${e.message||''}`)}
+    let matched=false;
+    if(firstTrack?.readyState==='live'){
+      matched=await applyQualityToTrack(firstTrack,p,value);
     }
-    const track=cameraStream?.getVideoTracks?.()[0];
-    if(cameraStream&&!videoSettingsMatchPreset(track?.getSettings?.(),value)){
-      // Android/Firefox may need a fresh capture track for mode changes.
+    if(cameraStream&&!matched){
+      // Firefox may require re-acquiring the camera for a new sensor mode.
+      // Only do this when in-place applyConstraints did not reach the size.
       await openCamera({facing:currentFacing,deviceId:explicitDeviceId});
+      matched=videoSettingsMatchPreset(cameraStream?.getVideoTracks?.()[0]?.getSettings?.(),value);
+      if(!matched){
+        const fresh=cameraStream?.getVideoTracks?.()[0];
+        matched=await applyQualityToTrack(fresh,p,value);
+      }
     }
     const actualTrack=cameraStream?.getVideoTracks?.()[0];
     if(actualTrack&&!videoSettingsMatchPreset(actualTrack.getSettings?.(),value)){
-      const got=actualVideoSize(actualTrack);
-      throw new Error(`กล้องส่งจริง ${got} ไม่ตรง ${PRESETS[value].w}×${PRESETS[value].h}`);
+      throw new Error(`ขอ ${p.w}×${p.h} แต่กล้องได้ ${actualVideoSize(actualTrack)}`);
     }
+    if(!actualTrack)throw new Error('ยังไม่มีแทร็กกล้องให้ปรับ');
   }catch(e){
-    // Keep the selected *request* for troubleshooting, but never ACK success.
-    // A capture failure is reported to Control with the actual dimensions.
     log(`Quality ไม่สำเร็จ: ${e.message}`);
     sendTelemetry();throw e;
   }
   if(FIXED_PRESET_KEY)localStorage.setItem(FIXED_PRESET_KEY,value);
   smartProfile=reason;
   $('#statSmartProfile').textContent=smartProfile;
-  log(`${reason} → ${q().label}`);
+  const st=cameraStream?.getVideoTracks?.()[0]?.getSettings?.()||{};
+  const fps=Number(st.frameRate||0);
+  if(fps&&fps<p.fps-5)log(`กล้องรองรับความละเอียดแล้ว แต่ FPS จริง ${fps.toFixed(0)} (ขอสูงสุด ${p.fps})`);
+  log(`${reason} → ${p.label} / จับภาพ ${actualVideoSize(cameraStream?.getVideoTracks?.()[0])}`);
   sendTelemetry();
 }
 
@@ -1051,7 +1073,7 @@ async function handleRemote(d,sourceUuid=''){
     else if(d.command==='zoomDrive')setZoomDrive(d.direction,{speed:d.speed});
     else if(d.command==='zoomStop')setZoomDrive(0,{speed:d.speed});
     else if(d.command==='device'&&d.deviceId)await openCamera({deviceId:d.deviceId});
-    else if(d.command==='quality'&&d.value)await setQualityPreset(d.value,d.reason||'Remote quality');
+    else if(d.command==='quality'&&d.value)await setQualityPreset(d.value,d.reason||'Remote quality',d.force===true);
     else known=false;
     if(!known)throw new Error(`ไม่รู้จักคำสั่ง ${d.command}`);
     if(d.commandId)processedRemoteCommands.set(d.commandId,{ts:Date.now(),done:true,ok:true,message:''});

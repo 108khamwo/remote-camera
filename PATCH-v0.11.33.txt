@@ -1,0 +1,17 @@
+Remote Camera v0.11.33 — QUALITY MASTER RELIABILITY
+
+- Receiver-driven 720p/1080p uses the live source camera's real getSettings().
+- Handles portrait camera tracks with reversed 9:16 dimensions, rather than always requesting 16:9.
+- Explicitly attempts to raise FPS when switching from 30 to "up to 60" on the same 1080p / 720p preset.
+- Display actual capture FPS; 60 FPS is a maximum request, never a guarantee.
+- Retry manually forces an applyConstraints attempt; no continuous auto re-acquisition when phone cannot meet target FPS.
+- Try in-place applyConstraints before WebRTC replaceTrack; retry new camera only on failed resolution.
+- If targeting a stale Data Channel UUID fails, fall back to stream-target filtered broadcast.
+- Command channel errors are immediately visible; quality ACK timeout extended for camera re-acquisition.
+- Keep permanent Sender / OBS URLs and 1080p / 720p choices unchanged.
+- Network controls for permanent OBS URLs are not changed in this release.
+
+Deployment: Replace all files in existing GitHub Pages root, preserve your permanent link URLs.
+Refresh both Sender (Firefox) and Control Center; restart OBS Browser Source cache only if needed.
+Test: 1080p/30 -> 720p/30 -> 1080p/30 -> 1080p/up to 60.
+See actual capture WxH and fps; OBS output dimensions are independently affected by WebRTC.
