@@ -46,6 +46,7 @@ function setMicMuted(muted,{silent=false}={}){
   if(isPublishing)setTimeout(sendTelemetry,40);
 }
 function updateSimpleStatus(){
+  if(BAD_FIXED_LINK){const el=$('#senderSimpleStatus');if(el){el.textContent='ลิงก์กล้องไม่ถูกต้อง';el.className='warntext'}return;}
   const el=$('#senderSimpleStatus');
   const sendBtn=$('#sendToggleBtn'), sendLabel=$('#sendToggleLabel'), sendIcon=$('#sendToggleIcon');
   const liveTrack=cameraStream?.getVideoTracks?.().some(t=>t.readyState==='live');
@@ -69,6 +70,12 @@ const IS_SAMSUNG=/SamsungBrowser/i.test(UA);
 const PLATFORM=IS_ANDROID?'Android':IS_IOS?'iOS':'Browser';
 const BROWSER=IS_SAMSUNG?'Samsung Internet':/FxiOS|Firefox/i.test(UA)?'Firefox':/CriOS|Chrome/i.test(UA)?'Chrome':/Safari/i.test(UA)?'Safari':'Web Browser';
 const DEVICE_KEY='remoteCamPhysicalDeviceIdV1';
+// A permanent sender link owns its stream identity, even on a different phone/browser.
+// Reject unknown/malformed URL IDs rather than silently sending to an unrelated stream.
+const LINK_PARAMS=new URLSearchParams(location.search);
+const LINK_STREAM_PARAM=LINK_PARAMS.get('s');
+const FIXED_STREAM_ID=/^cam_fixed_[a-f0-9]{32}$/.test(LINK_STREAM_PARAM||'')?LINK_STREAM_PARAM:'';
+const BAD_FIXED_LINK=LINK_PARAMS.has('s')&&!FIXED_STREAM_ID;
 let DEVICE_ID='';
 function shortId(n=8){try{return crypto.randomUUID().replace(/-/g,'').slice(0,n)}catch{return (Math.random().toString(36).slice(2)+Date.now().toString(36)).slice(0,n)}}
 function normId(v){return String(v||'').trim().replace(/[^\w]/g,'_')}
@@ -87,14 +94,25 @@ function initIdentity(){
   DEVICE_ID=stable;localStorage.setItem(DEVICE_KEY,DEVICE_ID);
   const savedStream=localStorage.getItem('remoteCamStreamId');
   const savedName=localStorage.getItem('remoteCamName');
-  let id=normId(savedStream||'');
+  let id=FIXED_STREAM_ID||normId(savedStream||'');
   if(!id.startsWith('cam_'))id=`cam_${platformSlug()}_${shortId(8)}`;
   $('#room').value=systemRoom();
   $('#streamId').value=id;
   if($('#roomView'))$('#roomView').value=systemRoom();
   if($('#streamIdView'))$('#streamIdView').value=id;
-  $('#cameraName').value=savedName||`${PLATFORM} ${id.slice(-4).toUpperCase()}`;
-  localStorage.setItem('remoteCamStreamId',id);
+  // Never inherit another shoot's nickname when opening a link on a shared phone.
+  $('#cameraName').value=FIXED_STREAM_ID&&savedStream!==FIXED_STREAM_ID?
+    'กล้องระยะไกล':(savedName||`${PLATFORM} ${id.slice(-4).toUpperCase()}`);
+  if(FIXED_STREAM_ID){
+    const renewal=$('#newStreamId');if(renewal)renewal.hidden=true;
+    const badge=$('#permanentLinkBadge');if(badge)badge.hidden=false;
+  }
+  if(BAD_FIXED_LINK){
+    const label=$('#senderSimpleStatus');if(label){label.textContent='ลิงก์กล้องไม่ถูกต้อง';label.className='warntext'}
+    const btn=$('#sendToggleBtn');if(btn)btn.disabled=true;
+  }
+  // A shared event link must not overwrite the phone's regular sender identity.
+  if(!FIXED_STREAM_ID&&!BAD_FIXED_LINK)localStorage.setItem('remoteCamStreamId',id);
   localStorage.setItem('remoteCamRoom',systemRoom());
   $('#platformBadge').textContent=`${PLATFORM} • ${BROWSER}`;
   $('#statPlatform').textContent=`${PLATFORM} / ${BROWSER}`;
@@ -102,7 +120,7 @@ function initIdentity(){
   const syncCameraName=()=>{const name=$('#cameraName').value.trim();localStorage.setItem('remoteCamName',name);if($('#mainCameraName'))$('#mainCameraName').textContent=name||'Remote Camera'};
   $('#cameraName').addEventListener('input',syncCameraName);syncCameraName();
 }
-function generateNewStreamId(){const id=`cam_${platformSlug()}_${shortId(8)}`;$('#streamId').value=id;if($('#streamIdView'))$('#streamIdView').value=id;localStorage.setItem('remoteCamStreamId',id);$('#cameraName').value=`${PLATFORM} ${id.slice(-4).toUpperCase()}`;localStorage.setItem('remoteCamName',$('#cameraName').value.trim());log(`สร้าง Device ID ใหม่อัตโนมัติ: ${id}`)}
+function generateNewStreamId(){if(FIXED_STREAM_ID||BAD_FIXED_LINK)return;const id=`cam_${platformSlug()}_${shortId(8)}`;$('#streamId').value=id;if($('#streamIdView'))$('#streamIdView').value=id;localStorage.setItem('remoteCamStreamId',id);$('#cameraName').value=`${PLATFORM} ${id.slice(-4).toUpperCase()}`;localStorage.setItem('remoteCamName',$('#cameraName').value.trim());log(`สร้าง Device ID ใหม่อัตโนมัติ: ${id}`)}
 function publisherLabel(){const name=($('#cameraName').value.trim()||$('#streamId').value).replace(/\|/g,' ');return `RCAM2|${DEVICE_ID}|${name}|${PLATFORM}|${BROWSER}`}
 
 // Smooth Zoom v0.11.2
@@ -907,13 +925,14 @@ async function buildOutStream(){
 function updatePeerCount(){ $('#statPeers').textContent=String(peerIds.size); }
 
 async function startPublishing(){
+  if(BAD_FIXED_LINK)throw new Error('ลิงก์กล้องไม่ถูกต้อง');
   if(isPublishing)return;
   $('#statRtc').textContent='กำลังโหลด SDK…';
   await loadVDONinjaSDK(({index,total})=>{ $('#statRtc').textContent=`โหลด SDK ${index}/${total}`; log(`กำลังโหลด WebRTC SDK (${index}/${total})`); });
   log(`VDO.Ninja SDK พร้อมใช้งาน v${window.VDONinjaSDK?.VERSION || '?'}`);
   if(!cameraStream)await openCamera({facing:currentFacing});
   const stream=await buildOutStream(),room=$('#room').value.trim(),streamID=normId($('#streamId').value.trim());
-  $('#streamId').value=streamID;localStorage.setItem('remoteCamStreamId',streamID);
+  $('#streamId').value=streamID;if(!FIXED_STREAM_ID)localStorage.setItem('remoteCamStreamId',streamID);
   if(!room||!streamID)throw new Error('กรุณาระบุ Room และ Stream ID');
   vdo=new VDONinjaSDK({autoRecover:true,autoRelay:true,salt:'vdo.ninja'});
   vdo.addEventListener('connected',()=>{$('#statRtc').textContent='signaling connected';log('เชื่อม signaling แล้ว')});
@@ -1070,7 +1089,7 @@ document.addEventListener('visibilitychange',()=>{
   }
 });
 window.addEventListener('beforeunload',()=>stopAll());
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=01129').catch(()=>{});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=01130').catch(()=>{});
 $('#statHint').textContent=q().hint;
 $('#statSmartProfile').textContent=smartProfile;
 initIdentity();updateSimpleStatus();updateMicUi();updateMicGainUi();updateMicNoiseUi();

@@ -11,6 +11,81 @@ const pendingMessageAcks=new Map();let messageSeq=0;
 function nextMessageId(){messageSeq=(messageSeq+1)%100000;return `msg_${Date.now().toString(36)}_${messageSeq.toString(36)}`}
 const CAMERA_STORE='remoteCamAutoCamerasV4';
 const SELECTED_CAMERA_STORE='remoteCamSelectedCameraV1';
+const FIXED_SLOT_STORE='remoteCamPermanentSlotsV1';
+let fixedSlots=[];
+function loadFixedSlots(){
+  try{fixedSlots=JSON.parse(localStorage.getItem(FIXED_SLOT_STORE)||'[]')}catch{fixedSlots=[]}
+  if(!Array.isArray(fixedSlots))fixedSlots=[];
+  fixedSlots=fixedSlots.filter(s=>s&&/^cam_fixed_[a-f0-9]{32}$/.test(s.id)&&typeof s.name==='string');
+  fixedSlots=[...new Map(fixedSlots.map(s=>[s.id,{id:s.id,name:s.name.slice(0,70)}])).values()];
+}
+function saveFixedSlots(){localStorage.setItem(FIXED_SLOT_STORE,JSON.stringify(fixedSlots))}
+function isFixedSlot(id){return fixedSlots.some(s=>s.id===id)}
+function slotById(id){return fixedSlots.find(s=>s.id===id)}
+function permanentSenderUrl(id){const u=new URL('sender.html',location.href);u.searchParams.set('s',id);return u.href}
+function permanentObsUrl(id){const u=new URL('r.html',location.href);u.searchParams.set('s',id);return u.href}
+function seedFixedSlots(){
+  for(const slot of fixedSlots){
+    const c=cameras.find(x=>x.id===slot.id);
+    if(c){c.name=slot.name;c.transport='room';}
+    else cameras.push({id:slot.id,deviceId:'',name:slot.name,platform:'',browser:'',transport:'room',online:false,lastSeen:0,uuid:''});
+  }
+}
+function newFixedSlotId(){
+  if(!crypto?.getRandomValues)throw new Error('การสร้างลิงก์ถาวรต้องเปิดผ่าน HTTPS');
+  const bytes=new Uint8Array(16);crypto.getRandomValues(bytes);
+  return `cam_fixed_${[...bytes].map(n=>n.toString(16).padStart(2,'0')).join('')}`;
+}
+async function copyPermanentLink(value,btn){
+  try{
+    await navigator.clipboard.writeText(value);
+    const prev=btn.textContent;btn.textContent='คัดลอกแล้ว';setTimeout(()=>btn.textContent=prev,1200);
+  }catch{
+    const input=btn.parentElement?.querySelector('input');if(input){input.focus();input.select()}
+    alert('กรุณาคัดลอกลิงก์จากช่องข้อความ');
+  }
+}
+function permanentLinkRow(label,url){
+  const wrap=document.createElement('div');wrap.className='perma-url-line';
+  const title=document.createElement('span');title.className='mini';title.textContent=label;
+  const input=document.createElement('input');input.type='text';input.readOnly=true;input.value=url;input.setAttribute('aria-label',label);
+  const button=document.createElement('button');button.type='button';button.className='ghost';button.textContent='คัดลอก';
+  button.addEventListener('click',()=>copyPermanentLink(url,button));
+  wrap.append(title,input,button);return wrap;
+}
+function renderFixedSlots(){
+  const box=$('#permanentSlotList');if(!box)return;box.replaceChildren();
+  if(!fixedSlots.length){const empty=document.createElement('div');empty.className='mini';empty.textContent='ยังไม่มีคู่ลิงก์';box.append(empty);return}
+  for(const slot of fixedSlots){
+    const card=document.createElement('div');card.className='perma-slot-card';
+    const head=document.createElement('div');head.className='perma-slot-head';
+    const name=document.createElement('strong');name.textContent=slot.name;
+    const actions=document.createElement('div');actions.className='perma-slot-actions';
+    const select=document.createElement('button');select.className='ghost';select.type='button';select.textContent='ดูกล้อง';
+    select.addEventListener('click',()=>selectCamera(slot.id,{fromUser:true}).catch(e=>log(`เลือกกล้อง: ${e.message}`)));
+    const del=document.createElement('button');del.className='ghost perma-delete';del.type='button';del.textContent='ลบรายการ';
+    del.addEventListener('click',()=>{
+      if(!confirm(`ลบคู่ลิงก์ “${slot.name}” ออกจากรายการ?\nลิงก์เดิมจะยังเชื่อมต่อได้จนกว่าจะเลิกใช้งาน`))return;
+      fixedSlots=fixedSlots.filter(s=>s.id!==slot.id);saveFixedSlots();renderFixedSlots();
+      // Do not remove an active video endpoint or break someone using an old URL.
+      const c=cameras.find(c=>c.id===slot.id);if(c&&!c.online){cameras=cameras.filter(x=>x!==c);saveCameras();if(selectedCameraId===slot.id){rememberSelectedCamera('');if(connectedStreamId===slot.id)closeSelected();}}
+      registrySignature='';renderRegistry(null,{force:true});
+    });
+    actions.append(select,del);head.append(name,actions);
+    card.append(head,permanentLinkRow('ลิงก์ผู้ส่ง',permanentSenderUrl(slot.id)),permanentLinkRow('ลิงก์ OBS',permanentObsUrl(slot.id)));
+    box.append(card);
+  }
+}
+function addFixedSlot(name,id=null){
+  const label=String(name||'').trim().slice(0,70)||`กล้อง ${fixedSlots.length+1}`;
+  const stream=id||newFixedSlotId();
+  if(!/^cam_fixed_[a-f0-9]{32}$/.test(stream))throw new Error('Stream ID ไม่ถูกต้อง');
+  if(fixedSlots.some(s=>s.id===stream))throw new Error('ลิงก์นี้อยู่ในรายการแล้ว');
+  fixedSlots.push({name:label,id:stream});saveFixedSlots();seedFixedSlots();saveCameras();
+  registrySignature='';renderRegistry(null,{force:true});renderFixedSlots();
+  return stream;
+}
+
 let selectedCameraId=cleanId(localStorage.getItem(SELECTED_CAMERA_STORE)||'');
 let userSelectionLocked=false;
 let autoOpenPending=false;
@@ -62,8 +137,10 @@ function upsertCamera(info,{render=true}={}){
   if(!id.startsWith('cam_'))return null;
   // Device ID is the stable identity; stream ID is its current video endpoint.
   // If a Sender reconnects with a changed stream ID, merge it into the same card.
-  let c=deviceId?cameras.find(x=>x.deviceId===deviceId):null;
-  if(!c)c=cameras.find(x=>x.id===id);
+  // Permanent slots are keyed by link, NOT by physical device.
+  // One phone can successively operate different slots without altering old links.
+  let c=cameras.find(x=>x.id===id)||null;
+  if(!c&&!isFixedSlot(id))c=deviceId?cameras.find(x=>x.deviceId===deviceId&&!isFixedSlot(x.id)):null;
   if(!c){c={id,deviceId,name:id,platform:'',browser:'',transport:info?.transport==='direct'?'direct':'room',online:false,lastSeen:0,uuid:''};cameras.push(c);log(`พบกล้องจริงจาก Sender: ${id}`)}
   else if(c.id!==id){const oldId=c.id;c.id=id;if(selectedCameraId===oldId)rememberSelectedCamera(id);if(connectedStreamId===oldId)connectedStreamId=id;}
   if(info?.transport==='direct')c.transport='direct';
@@ -71,7 +148,8 @@ function upsertCamera(info,{render=true}={}){
   else if(!c.transport)c.transport='room';
   if(deviceId)c.deviceId=deviceId;
   if(info.label){const p=parseLabel(info.label,id);if(p.name)c.name=p.name;if(p.platform)c.platform=p.platform;if(p.browser)c.browser=p.browser}
-  if(info.name)c.name=String(info.name);
+  if(info.name&&!isFixedSlot(id))c.name=String(info.name);
+  if(isFixedSlot(id))c.name=slotById(id).name;
   if(info.platform)c.platform=String(info.platform);
   if(info.browser)c.browser=String(info.browser);
   if(info.uuid)c.uuid=String(info.uuid);
@@ -167,7 +245,7 @@ function renderRegistry(preferred=null,{force=false}={}){
       if(chosen&&!ordered.some(c=>c.id===chosen)){const o=document.createElement('option');o.value=chosen;o.textContent=`◌ กล้องล่าสุด • ${chosen}`;sel.appendChild(o)}
     }
     const chips=$('#cameraChips');chips.innerHTML='';
-    ordered.forEach(c=>{const b=document.createElement('button');b.type='button';b.className='camera-chip'+(c.transport==='direct'?' direct':(c.online?' online':' offline'));b.dataset.id=c.id;const suffix=c.transport==='direct'?'NATIVE DIRECT':(c.platform||'');b.innerHTML=`<span class="presence-dot"></span>${c.name} <small>${suffix}</small>`;chips.appendChild(b)});
+    ordered.forEach(c=>{const b=document.createElement('button');b.type='button';b.className='camera-chip'+(c.transport==='direct'?' direct':(c.online?' online':' offline'));b.dataset.id=c.id;const suffix=c.transport==='direct'?'NATIVE DIRECT':(c.platform||'');const dot=document.createElement('span');dot.className='presence-dot';const title=document.createTextNode(c.name+' ');const small=document.createElement('small');small.textContent=suffix;b.append(dot,title,small);chips.appendChild(b)});
     registrySignature=signature;renderMultiObs();
   }
   if(chosen){sel.value=chosen;$('#streamId').value=chosen}else{$('#streamId').value=''}
@@ -193,7 +271,7 @@ function renderMultiObs(){
   if(!ordered.length){box.innerHTML='<div class="mini">ยังไม่พบมือถือที่กำลังส่งภาพ</div>';return}
   ordered.forEach(c=>{
     const row=document.createElement('div');row.className='multi-obs-row';
-    const name=document.createElement('div');name.innerHTML=`${c.transport==='direct'?'🔵':(c.online?'🟢':'⚫')} ${c.name}`;
+    const name=document.createElement('div');name.textContent=`${c.transport==='direct'?'🔵':(c.online?'🟢':'⚫')} ${c.name}`;
     const id=document.createElement('div');id.className='mini';id.textContent=c.transport==='direct'?`Native Direct • ${c.id}`:(c.platform||c.id);
     const input=document.createElement('input');input.readOnly=true;input.value=compactObsUrl({streamId:c.id});
     const copy=document.createElement('button');copy.type='button';copy.textContent='คัดลอก';copy.onclick=async()=>{await navigator.clipboard.writeText(input.value);copy.textContent='แล้ว';setTimeout(()=>copy.textContent='คัดลอก',900)};
@@ -626,10 +704,23 @@ function removeSelectedDirect(){
   cameras=cameras.filter(x=>x.id!==id);if(selectedCameraId===id)rememberSelectedCamera('');if(connectedStreamId===id)closeSelected();saveCameras();registrySignature='';renderRegistry(null,{force:true});log(`ลบ Native Direct: ${id}`);
 }
 
-loadCameras();$('#room').value=systemRoom();if($('#roomText'))$('#roomText').textContent=$('#room').value;renderRegistry();updateObs();resetTelemetry();setControlStatus('ควบคุมกล้องจากหน้ามือถือ');
+loadFixedSlots();loadCameras();seedFixedSlots();renderFixedSlots();$('#room').value=systemRoom();if($('#roomText'))$('#roomText').textContent=$('#room').value;renderRegistry();updateObs();resetTelemetry();setControlStatus('ควบคุมกล้องจากหน้ามือถือ');
 setTimeout(()=>maybeAutoOpen(),350);
 ['bitrate','buffer','codec','networkMode','smartMin','smartFallback'].forEach(id=>$('#'+id).addEventListener('change',()=>{updateObs();renderMultiObs();reloadPreview()}));
 $('#cameraSelect').addEventListener('change',e=>selectCamera(e.target.value,{fromUser:true}).catch(x=>log(`Select error: ${x.message}`)));
+$('#createPermanentSlot').addEventListener('click',()=>{
+  const input=$('#permanentSlotName');
+  try{const id=addFixedSlot(input.value);input.value='';selectCamera(id,{fromUser:true}).catch(()=>{});}
+  catch(e){alert(e.message)}
+});
+$('#permanentSlotName').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#createPermanentSlot').click()}});
+$('#importPermanentSlot').addEventListener('click',()=>{
+  const value=$('#importPermanentUrl').value.trim();
+  const match=value.match(/cam_fixed_[a-f0-9]{32}/);
+  if(!match){alert('กรุณาวางลิงก์ผู้ส่งหรือ OBS ที่สร้างจากระบบนี้');return}
+  try{addFixedSlot($('#importPermanentName').value,match[0]);$('#importPermanentUrl').value='';$('#importPermanentName').value=''}
+  catch(e){alert(e.message)}
+});
 $('#cameraChips').addEventListener('click',e=>{const b=e.target.closest('[data-id]');if(b){e.preventDefault();selectCamera(b.dataset.id,{fromUser:true}).catch(x=>log(`Select error: ${x.message}`))}});
 $('#controlMessageOpen').onclick=()=>{const p=$('#controlMessagePanel');p.hidden=!p.hidden;$('#controlMessageOpen').setAttribute('aria-expanded',String(!p.hidden));renderControlMessages()};
 $('#controlMessageSendSelected').onclick=()=>{const input=$('#controlMessageInput');if(sendControlMessage(input.value,{broadcast:false}))input.value=''};
@@ -637,7 +728,7 @@ $('#controlMessageSendAll').onclick=()=>{const input=$('#controlMessageInput');i
 $('#controlMessageInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#controlMessageSendAll').click()}});
 $('#controlMessageToast').addEventListener('click',()=>{$('#controlMessagePanel').hidden=false;$('#controlMessageToast').hidden=true;renderControlMessages()});
 $('#refreshDiscovery').onclick=()=>restartDiscovery().catch(e=>log(`Discovery restart error: ${e.message}`));
-$('#forgetOffline').onclick=()=>{cameras=cameras.filter(c=>c.online);if(selectedCameraId&&!cameras.some(c=>c.id===selectedCameraId))rememberSelectedCamera('');registrySignature='';saveCameras();renderRegistry(null,{force:true});log('ล้างรายการ Offline แล้ว')};
+$('#forgetOffline').onclick=()=>{cameras=cameras.filter(c=>c.online||isFixedSlot(c.id));if(selectedCameraId&&!cameras.some(c=>c.id===selectedCameraId))rememberSelectedCamera('');registrySignature='';saveCameras();renderRegistry(null,{force:true});log('ล้างรายการ Offline แล้ว')};
 $('#addNativeDirect').onclick=()=>{try{const id=addNativeDirect($('#nativeDirectInput').value);$('#nativeDirectInput').value='';$('#nativeDirectInput').placeholder=`เพิ่มแล้ว: ${id}`}catch(e){log(`เพิ่ม Native Direct ไม่สำเร็จ: ${e.message}`);$('#nativeDirectInput').focus()}};
 $('#nativeDirectInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#addNativeDirect').click()}});
 $('#removeSelectedDirect').onclick=removeSelectedDirect;

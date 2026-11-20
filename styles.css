@@ -616,3 +616,24 @@ body.fullscreen-active .sender-call-controls{flex:none}
 .mic-audio-settings #micNoiseStatus[hidden]{display:none!important}
 .mic-audio-settings #micNoiseStatus:not([hidden]){margin-top:6px;font-size:11px}
 @media(max-width:370px){.sender-mic-track{width:82px}.sender-mic-level{padding:6px 8px}}
+
+/* v0.11.30: permanent sender/OBS link pairs */
+.permanent-link-card{padding:14px 16px}
+.perma-create-row{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}
+.perma-create-row>input{flex:1 1 230px;min-width:130px}
+.perma-create-row>button{white-space:nowrap}
+.perma-slot-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr));gap:10px;margin-top:12px}
+.perma-slot-card{border:1px solid var(--border,#263849);background:rgba(124,159,195,.06);border-radius:12px;padding:12px;min-width:0;display:grid;gap:7px}
+.perma-slot-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.perma-slot-head strong{font-size:14px;overflow-wrap:anywhere}
+.perma-slot-actions{display:flex;gap:6px}
+.perma-slot-actions button{font-size:12px;padding:7px 9px}
+.perma-delete{opacity:.78}
+.perma-url-line{display:grid;grid-template-columns:73px minmax(0,1fr) auto;align-items:center;gap:6px}
+.perma-url-line .mini{white-space:nowrap;font-size:12px}
+.perma-url-line input{min-width:0;font-size:12px;height:37px;padding:0 8px}
+.perma-url-line button{white-space:nowrap;padding:8px 10px;font-size:12px}
+.perma-import{margin-top:12px}
+.perma-import summary{font-size:12px}
+.sender-link-badge{font-size:10px;padding:2px 7px;border:1px solid rgba(95,210,255,.35);border-radius:20px;color:#b5efff}
+@media(max-width:580px){.perma-url-line{grid-template-columns:1fr auto}.perma-url-line .mini{grid-column:1/-1}.permanent-link-card{padding:12px}.perma-slot-list{grid-template-columns:1fr}}
