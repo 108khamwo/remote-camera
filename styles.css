@@ -649,74 +649,101 @@ body.fullscreen-active .sender-call-controls{flex:none}
 #retryVideoPreset[hidden]{display:none!important}
 .quality-retry{align-self:flex-start;margin-top:4px;padding:6px 10px;font-size:12px}
 
-/* v0.11.36 — compact Sender quality switch, responsive in both orientations */
-.sender-quick-quality{
-  flex:0 0 auto;min-width:0;min-height:42px;
-  display:flex;align-items:center;gap:8px;
-  padding:5px 12px;
-  background:#050a10;
-}
-.sender-quality-label{flex:none;color:#9ebfd0;font-size:12px;font-weight:600}
+
+/* v0.11.37 — minimal Sender UI. Visual-only changes; chat and streaming are untouched. */
+/* The sender's name/platform are still in the DOM and broadcast metadata,
+   but they do not take valuable picture space. */
+.sender-call-title{display:none!important}
+.sender-quick-quality{display:flex;flex:0 0 auto;align-items:center;gap:5px;min-height:38px;padding:4px 10px;background:#050a10}
 .sender-quick-quality-buttons{display:flex;align-items:center;gap:5px;flex:none}
-.sender-quality-button{
-  flex:none;width:auto;min-width:69px;height:32px;min-height:32px;
-  padding:4px 11px;border:1px solid #29445a;border-radius:10px;
-  background:#0b1c29;color:#dcebf4;font-size:13px;font-weight:750;
-  line-height:1;white-space:nowrap;touch-action:manipulation;
+.sender-link-badge{display:none!important}
+.sender-call-topbar{justify-content:flex-end;pointer-events:none;background:transparent}
+.sender-call-top-actions{pointer-events:auto}
+.sender-call-overlay-top{z-index:3;right:auto;justify-content:flex-start;top:10px;left:12px}
+#camBadge{display:none!important}
+.call-live-pill{max-width:none;padding:5px 9px;font-size:11px;letter-spacing:.025em}
+/* Only show status line for critical errors, not the second 'sending' label. */
+.sender-call-status-strip{display:none}
+.sender-call-status-strip:has(#senderSimpleStatus.warntext){display:flex}
+.sender-call-status-strip #zoomCurrent{display:none}
+/* Keep microphone meter visible, but small and out of the control row. */
+.sender-mic-level{left:12px;top:47px;bottom:auto;z-index:4;padding:5px 8px;gap:6px;border-radius:10px}
+.sender-mic-label{font-size:10px}
+.sender-mic-track{width:78px;height:6px}
+.sender-mic-state{font-size:10px}
+/* Quality presets are quick-access chips; real capture info is in Settings. */
+.sender-quick-quality{min-height:37px;gap:4px;padding:4px 10px}
+.sender-quick-quality-buttons{gap:5px}
+.sender-quality-button{min-width:60px;height:30px;min-height:30px;border-radius:9px;padding:4px 9px;font-size:12px;font-weight:750}
+#senderQualityActual{position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;clip-path:inset(50%);white-space:nowrap;opacity:0;pointer-events:none}
+#senderQualityActual.quality-error,#senderQualityActual.quality-busy{
+  position:static!important;width:auto!important;height:auto!important;clip-path:none;opacity:1;
+  max-width:min(260px,calc(100vw - 160px));font-size:11px;line-height:1.25;
 }
-.sender-quality-button.active{border-color:#00c0fa;background:#0b3443;color:#fff;box-shadow:inset 0 0 0 1px rgba(0,192,250,.18)}
-.sender-quality-button:disabled{opacity:.55}
-#senderQualityActual{
-  flex:1 1 auto;min-width:0;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  text-align:right;font-size:11px;color:#b4d8e8;
+/* Keep hold-to-zoom, but discard duplicate word labels and oversize controls. */
+.sender-call-controls{grid-template-columns:52px minmax(130px,1fr) 52px;max-width:410px;width:100%;gap:8px;margin-inline:auto;padding:9px 12px 6px}
+.sender-call-controls .call-control-btn{min-width:0;height:49px;border-radius:15px;padding:0;gap:0}
+.sender-call-controls .call-control-btn .call-control-symbol{font-size:25px}
+.sender-call-controls .call-control-btn .call-control-symbol+span{display:none}
+.sender-call-controls .call-send-btn{height:51px;border-radius:16px;font-size:16px;padding:8px 12px}
+/* Existing smooth zoom presets are now in the Settings sheet. */
+.sender-sheet #zoomPresetFloat{position:static!important;display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;right:auto;bottom:auto;width:auto}
+.sender-sheet #zoomPresetFloat[hidden]{display:none!important}
+.sender-sheet .call-zoom-preset{min-width:74px;padding:8px 12px;background:#132c3f;border:1px solid #2e526b}
+/* Incoming messages win over indicators and remain tappable. */
+.sender-message-toast{z-index:18;pointer-events:auto}
+@media(orientation:portrait){
+ .sender-call-topbar{height:54px;padding:7px 11px}
+ .sender-call-stage{max-height:calc(100svh - 152px)}
+ .sender-mic-level{top:46px}
+ .sender-call-stage .sender-message-toast{top:84px}
+ .sender-call-controls{padding-bottom:max(7px,env(safe-area-inset-bottom))}
 }
-#senderQualityActual.quality-error{color:#ffb66e}
-/* Keep the LIVE button centered even when both zoom controls are hidden. */
-.sender-call-controls #zoomOutBtn{grid-column:1}
-.sender-call-controls #sendToggleBtn{grid-column:2}
-.sender-call-controls #zoomInBtn{grid-column:3}
-/* Portrait stays in normal document flow; preview gets all remaining space. */
-@media (orientation:portrait), (min-height:621px){
-  .sender-call-stage{max-height:calc(100svh - 226px)}
+@media(orientation:landscape) and (max-height:620px) and (pointer:coarse){
+ .sender-call-topbar{z-index:13;min-height:0;padding:max(6px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right)) 3px 10px;background:none}
+ .sender-call-top-actions{gap:5px}
+ .call-icon-btn{width:34px;height:34px}
+ .sender-call-overlay-top{left:max(11px,env(safe-area-inset-left));top:max(9px,env(safe-area-inset-top));right:auto;z-index:3}
+ .sender-mic-level{left:max(11px,env(safe-area-inset-left));top:max(45px,calc(env(safe-area-inset-top) + 40px));bottom:auto!important;z-index:4}
+ .sender-call-status-strip{bottom:max(78px,calc(env(safe-area-inset-bottom) + 72px));left:max(12px,env(safe-area-inset-left));right:auto}
+ .sender-call-shell>.sender-quick-quality{
+   position:absolute;z-index:12;width:max-content;display:flex;align-items:center;
+   left:max(11px,env(safe-area-inset-left));right:auto;
+   bottom:max(72px,calc(env(safe-area-inset-bottom) + 65px));
+   max-width:calc(100vw - max(25px,env(safe-area-inset-left)) - max(25px,env(safe-area-inset-right)));
+   min-height:0;padding:4px 5px;border-radius:10px;gap:4px;
+   background:rgba(3,12,19,.62);border:1px solid rgba(255,255,255,.16)
+ }
+ .sender-call-shell>.sender-quick-quality .sender-quality-button{height:28px;min-height:28px;min-width:62px;padding:3px 8px;font-size:12px}
+ .sender-call-shell>.sender-quick-quality #senderQualityActual.quality-error,
+ .sender-call-shell>.sender-quick-quality #senderQualityActual.quality-busy{max-width:135px}
+ .sender-call-controls{
+   width:min(332px,calc(100vw - 26px));max-width:none;
+   grid-template-columns:50px minmax(120px,1fr) 50px;
+   gap:7px;left:50%;bottom:max(8px,env(safe-area-inset-bottom));
+   padding:0;background:none
+ }
+ .sender-call-controls .call-control-btn{height:47px;border-radius:15px}
+ .sender-call-controls .call-send-btn{height:49px;border-radius:15px;font-size:15px}
+ .sender-zoom-preset-float{display:none} /* Old floating controls never cover the picture */
+ .sender-sheet #zoomPresetFloat{display:flex} /* Still available in Settings */
+ .sender-sheet #zoomPresetFloat[hidden]{display:none}
+ .sender-message-toast{
+   top:max(55px,calc(env(safe-area-inset-top) + 52px));
+   left:auto;right:max(11px,env(safe-area-inset-right));
+   width:min(315px,calc(100vw - 153px));max-width:none;
+   padding:10px 12px;border-radius:12px;z-index:18
+ }
+ .sender-message-toast-text{font-size:15px}
 }
-/* Landscape: stage already fills the screen. The switch must never take
-   layout space or overlap the start/stop button, camera overlay or MIC meter. */
-@media (orientation:landscape) and (max-height:620px) and (pointer:coarse){
-  .sender-call-shell>.sender-quick-quality{
-    position:absolute;z-index:14;
-    bottom:max(78px,calc(env(safe-area-inset-bottom) + 70px));
-    left:max(12px,env(safe-area-inset-left));
-    right:auto;
-    width:max-content;
-    max-width:calc(100vw - max(24px,env(safe-area-inset-left)) - max(24px,env(safe-area-inset-right)));
-    min-height:0;
-    padding:4px 7px;
-    gap:6px;
-    border:1px solid rgba(255,255,255,.19);
-    border-radius:12px;
-    background:rgba(2,12,20,.72);
-    backdrop-filter:blur(8px);
-  }
-  .sender-call-shell>.sender-quick-quality .sender-quality-label{font-size:10px}
-  .sender-call-shell>.sender-quick-quality .sender-quality-button{
-    min-width:62px;height:30px;min-height:30px;padding:4px 8px;
-    font-size:12px;border-radius:9px;
-  }
-  .sender-call-shell>.sender-quick-quality #senderQualityActual{max-width:150px;font-size:10px}
-  .sender-call-stage{max-height:none!important;min-height:0!important;height:100%;flex:none}
-  .sender-call-status-strip{bottom:max(130px,calc(env(safe-area-inset-bottom) + 123px))}
-  .sender-mic-level{bottom:max(166px,calc(env(safe-area-inset-bottom) + 158px))}
+@media(orientation:landscape) and (max-height:320px) and (pointer:coarse){
+ .sender-call-shell>.sender-quick-quality{bottom:max(66px,calc(env(safe-area-inset-bottom) + 59px))}
+ .sender-mic-level{top:max(40px,calc(env(safe-area-inset-top) + 37px))}
+ .sender-call-controls .call-control-btn{height:43px}
+ .sender-call-controls .call-send-btn{height:45px}
+ .sender-call-controls{width:min(305px,calc(100vw - 24px))}
 }
-@media (orientation:landscape) and (max-height:320px) and (pointer:coarse){
-  /* Conserve vertical space on unusually short landscape browser viewports. */
-  .sender-call-shell>.sender-quick-quality #senderQualityActual{max-width:85px}
-  .sender-call-status-strip{left:auto;right:max(12px,env(safe-area-inset-right));bottom:max(90px,calc(env(safe-area-inset-bottom) + 82px))}
-  .sender-mic-level{bottom:max(140px,calc(env(safe-area-inset-bottom) + 132px))}
-}
-@media (orientation:portrait) and (max-width:360px){
-  .sender-quick-quality{gap:5px;padding-inline:8px}
-  .sender-quality-button{min-width:61px;padding-inline:7px}
-  .sender-quality-label{font-size:11px}
-  #senderQualityActual{font-size:10px}
+@media(orientation:portrait) and (max-width:360px){
+ .sender-call-top-actions{gap:4px}.call-icon-btn{width:34px;height:34px}
+ .sender-call-controls{grid-template-columns:44px minmax(110px,1fr) 44px;gap:7px;padding-inline:8px}
 }

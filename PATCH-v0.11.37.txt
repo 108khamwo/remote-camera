@@ -1,0 +1,12 @@
+Remote Camera v0.11.37 — SENDER CLEAN
+
+- Remove the visible title/name/platform/permanent-link badge from Sender live screen (permanent links are unchanged).
+- Keep only LIVE and a compact MIC meter top-left; control actions top-right.
+- Preserve chat icon, incoming message toast, history, quick replies and event handling unchanged.
+- Compact 1080p/720p chips, no redundant label; actual dimensions remain in Settings.
+- Preserve zoom +/- buttons with smaller layout, move preset 0.5x/1x into the Zoom settings group without changing handlers.
+- Compact single bottom row with Send/Stop centered, responsive to mobile landscape.
+- Rename a newly opened fixed camera link's default nickname from 'กล้องระยะไกล' to 'กล้อง'; existing custom names retained and signaling IDs unchanged.
+- No changes to Control Center, Receiver, WebRTC, network, audio processing or message logic.
+
+Deploy all files in this folder to GitHub Pages and hard refresh Sender.

@@ -1,4 +1,4 @@
-/* Remote Camera v0.11.36 — compact landscape sender + iOS 30fps */
+/* Remote Camera v0.11.37 — compact landscape sender + iOS 30fps */
 const $=s=>document.querySelector(s); const logEl=$('#log');
 function log(m){const t=new Date().toLocaleTimeString();logEl.textContent+=`[${t}] ${m}\n`;logEl.scrollTop=logEl.scrollHeight}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -120,7 +120,7 @@ function initIdentity(){
   if($('#streamIdView'))$('#streamIdView').value=id;
   // Never inherit another shoot's nickname when opening a link on a shared phone.
   $('#cameraName').value=FIXED_STREAM_ID&&savedStream!==FIXED_STREAM_ID?
-    'กล้องระยะไกล':(savedName||`${PLATFORM} ${id.slice(-4).toUpperCase()}`);
+    'กล้อง':(savedName||`${PLATFORM} ${id.slice(-4).toUpperCase()}`);
   if(FIXED_STREAM_ID){
     const renewal=$('#newStreamId');if(renewal)renewal.hidden=true;
     const badge=$('#permanentLinkBadge');if(badge)badge.hidden=false;
@@ -884,8 +884,8 @@ function updateSenderQualityUi(message=''){
   if(box){
     const track=cameraStream?.getVideoTracks?.()[0];
     const actual=measuredQualityText();
-    box.classList.remove('quality-error');
-    if(message){box.textContent=message;box.classList.toggle('quality-error',message.includes('ไม่สำเร็จ'));}
+    box.classList.remove('quality-error','quality-busy');
+    if(message){box.textContent=message;box.classList.toggle('quality-error',message.includes('ไม่สำเร็จ'));box.classList.toggle('quality-busy',message.includes('กำลังปรับ'));}
     else if(actual){
       const matched=videoSettingsMatchPreset(track?.getSettings?.(),committedPresetKey);
       box.textContent=matched?actual:`จริง ${actual} · ไม่ตรงที่เลือก`;
@@ -1272,7 +1272,7 @@ document.addEventListener('visibilitychange',()=>{
   }
 });
 window.addEventListener('beforeunload',()=>stopAll());
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=01136').catch(()=>{});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=01137').catch(()=>{});
 $('#statHint').textContent=q().hint;
 $('#statSmartProfile').textContent=smartProfile;
 initIdentity();updateSimpleStatus();updateMicUi();updateMicGainUi();updateMicNoiseUi();

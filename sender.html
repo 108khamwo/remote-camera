@@ -8,15 +8,15 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="mobile-web-app-capable" content="yes">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=01136">
+  <link rel="stylesheet" href="styles.css?v=01137">
   <title>ผู้ส่ง | ระบบ Live Streaming ระยะไกลผ่านมือถือ</title>
 </head>
 <body class="sender-call-body">
 <main class="sender-call-shell">
   <header class="sender-call-topbar">
     <div class="sender-call-title">
-      <strong id="mainCameraName">Remote Camera</strong>
-      <span id="platformBadge" class="sender-call-platform">ตรวจอุปกรณ์…</span><span id="permanentLinkBadge" class="sender-link-badge" hidden>ลิงก์ประจำ</span>
+      <strong id="mainCameraName">กล้อง</strong>
+      <span id="platformBadge" class="sender-call-platform">ตรวจอุปกรณ์…</span>
     </div>
     <div class="sender-call-top-actions">
       <button id="fullscreenBtn" class="call-icon-btn" type="button" aria-label="เต็มจอ" title="เต็มจอ">
@@ -48,10 +48,6 @@
       <div id="incomingMessageText" class="sender-message-toast-text"></div>
     </div>
 
-    <div id="zoomPresetFloat" class="sender-zoom-preset-float" hidden>
-      <button id="zoomPreset05" class="call-zoom-preset" type="button" hidden>0.5×</button>
-      <button id="zoomPreset1" class="call-zoom-preset" type="button" hidden>1×</button>
-    </div>
 
     <div id="senderMicLevel" class="sender-mic-level" aria-label="ระดับเสียงไมค์ขณะส่งภาพ" hidden>
       <span class="sender-mic-label">MIC</span>
@@ -66,7 +62,6 @@
   </section>
 
   <section class="sender-quick-quality" aria-label="ความละเอียดภาพจากมือถือ">
-    <span class="sender-quality-label">ภาพ</span>
     <div class="sender-quick-quality-buttons" role="group" aria-label="เลือกความละเอียดภาพ">
       <button id="senderQuality1080" type="button" class="sender-quality-button" aria-pressed="true">1080p</button>
       <button id="senderQuality720" type="button" class="sender-quality-button" aria-pressed="false">720p</button>
@@ -160,6 +155,10 @@
             <option value="fast">เร็ว</option>
           </select>
           <div id="zoomInfo" class="mini settings-hint">กด − / + ค้างเพื่อซูม</div>
+    <div id="zoomPresetFloat" class="sender-zoom-preset-float" hidden>
+      <button id="zoomPreset05" class="call-zoom-preset" type="button" hidden>0.5×</button>
+      <button id="zoomPreset1" class="call-zoom-preset" type="button" hidden>1×</button>
+    </div>
         </div>
 
         <div class="settings-group">
@@ -231,6 +230,6 @@
     <div id="screenRestHint" class="sender-rest-hint">พักหน้าจอแล้ว<br><small>ภาพและเสียงยังส่งตามปกติ • แตะเพื่อกลับ</small></div>
   </div>
 </main>
-<script src="sdk-loader.js?v=01136"></script><script src="sender.js?v=01136"></script><script src="fullscreen.js?v=01136"></script>
+<script src="sdk-loader.js?v=01137"></script><script src="sender.js?v=01137"></script><script src="fullscreen.js?v=01137"></script>
 </body>
 </html>
