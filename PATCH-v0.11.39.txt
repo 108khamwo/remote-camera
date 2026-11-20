@@ -1,0 +1,9 @@
+Remote Camera v0.11.39 — FIRST START BUTTON FIX
+
+- Fix OFFLINE/first-load Send button misplaced in narrow left grid column because both zoom-hold buttons are hidden until camera/zoom support is ready.
+- Explicitly pin the Send/Stop button in the center grid column at all times, regardless of whether zoom +/- buttons are visible.
+- Preserve readable, one-line Thai Send/Stop labels at portrait and landscape sizes.
+- Preserve quality presets, permanent links, preview overlays, mic level, quick zoom, audio, WebRTC and message send/receive JavaScript unchanged.
+- CSS/layout fix only, other than updated version/cache labels.
+
+Deploy all files inside this folder to the existing GitHub Pages web root. Reopen the Sender page to refresh assets.

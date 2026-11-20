@@ -650,7 +650,7 @@ body.fullscreen-active .sender-call-controls{flex:none}
 .quality-retry{align-self:flex-start;margin-top:4px;padding:6px 10px;font-size:12px}
 
 
-/* v0.11.38 — minimal Sender UI. Visual-only changes; chat and streaming are untouched. */
+/* v0.11.39 — minimal Sender UI. Visual-only changes; chat and streaming are untouched. */
 /* The sender's name/platform are still in the DOM and broadcast metadata,
    but they do not take valuable picture space. */
 .sender-call-title{display:none!important}
@@ -741,7 +741,7 @@ body.fullscreen-active .sender-call-controls{flex:none}
  .sender-call-controls{grid-template-columns:44px minmax(110px,1fr) 44px;gap:7px;padding-inline:8px}
 }
 
-/* v0.11.38 — three targeted Sender visual fixes. Do not touch messaging/WebRTC logic. */
+/* v0.11.39 — three targeted Sender visual fixes. Do not touch messaging/WebRTC logic. */
 /* Display the already-maintained selected preset; disabled does not erase its colour. */
 .sender-quality-button{
   display:inline-flex;align-items:center;justify-content:center;
@@ -820,5 +820,47 @@ body.fullscreen-active .sender-call-controls{flex:none}
 @media(orientation:landscape) and (max-height:320px) and (pointer:coarse){
   .sender-call-stage>.sender-zoom-preset-float{
     bottom:max(65px,calc(env(safe-area-inset-bottom) + 58px));
+  }
+}
+
+
+/* v0.11.39 — fix START button on first open / no zoom capability.
+   Hidden grid neighbours must never move the Send/Stop button to column one. */
+.sender-call-controls > #zoomOutBtn{
+  grid-column:1;grid-row:1;
+}
+.sender-call-controls > #sendToggleBtn{
+  grid-column:2;grid-row:1;
+  justify-self:stretch;align-self:center;
+  width:100%;min-width:0;max-width:100%;
+  height:54px;min-height:48px;
+  padding:7px 12px;
+  gap:8px;
+  font-size:16px;font-weight:850;
+  white-space:nowrap;
+  -webkit-appearance:none;appearance:none;
+}
+.sender-call-controls > #zoomInBtn{
+  grid-column:3;grid-row:1;
+}
+#sendToggleLabel{
+  flex:0 1 auto;
+  overflow:visible;
+  text-overflow:clip;
+  white-space:nowrap;
+}
+@media(orientation:landscape) and (max-height:620px) and (pointer:coarse){
+  .sender-call-controls > #sendToggleBtn{
+    height:49px;min-height:45px;
+    font-size:15px;
+    padding:6px 10px;
+  }
+}
+@media(orientation:landscape) and (max-height:320px) and (pointer:coarse){
+  .sender-call-controls > #sendToggleBtn{height:45px;min-height:43px}
+}
+@media(orientation:portrait) and (max-width:350px){
+  .sender-call-controls > #sendToggleBtn{
+    font-size:15px;padding:6px 7px;gap:6px;
   }
 }

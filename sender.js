@@ -1,4 +1,4 @@
-/* Remote Camera v0.11.38 — compact landscape sender + iOS 30fps */
+/* Remote Camera v0.11.39 — compact landscape sender + iOS 30fps */
 const $=s=>document.querySelector(s); const logEl=$('#log');
 function log(m){const t=new Date().toLocaleTimeString();logEl.textContent+=`[${t}] ${m}\n`;logEl.scrollTop=logEl.scrollHeight}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -1272,7 +1272,7 @@ document.addEventListener('visibilitychange',()=>{
   }
 });
 window.addEventListener('beforeunload',()=>stopAll());
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=01138').catch(()=>{});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=01139').catch(()=>{});
 $('#statHint').textContent=q().hint;
 $('#statSmartProfile').textContent=smartProfile;
 initIdentity();updateSimpleStatus();updateMicUi();updateMicGainUi();updateMicNoiseUi();
