@@ -869,9 +869,12 @@ $('#controlListenBtn').onclick=()=>{
   if(!connectedStreamId)return;
   monitorAudioEnabled=!monitorAudioEnabled;
   updateMonitorAudioUi();
-  // A fresh connection is necessary: the silent preview deliberately excluded
-  // incoming audio tracks. Only this Control preview reloads; OBS is unchanged.
-  reloadPreview();
+  // Audio tracks are already negotiated in the muted preview. Change only
+  // playback via receiver.html -> VDO.Ninja postMessage; never reload video.
+  const frame=$('#remoteFrame');
+  if(frame?.contentWindow&&frame.src&&frame.src!=='about:blank'){
+    frame.contentWindow.postMessage({type:'remote-camera-preview-monitor',enabled:monitorAudioEnabled},location.origin);
+  }
 };
 $('#controlMessageOpen').onclick=()=>{const p=$('#controlMessagePanel');p.hidden=!p.hidden;$('#controlMessageOpen').setAttribute('aria-expanded',String(!p.hidden));renderControlMessages()};
 $('#controlMessageSendSelected').onclick=()=>{const input=$('#controlMessageInput');if(sendControlMessage(input.value,{broadcast:false}))input.value=''};
