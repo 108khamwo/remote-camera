@@ -1,0 +1,10 @@
+Remote Camera v0.11.38 — QUICK ZOOM & LAYOUT FIX
+
+- Restore the SAME quick zoom controls (0.5x / 1x) from Settings to small camera-overlay shortcuts. Zoom API support checking and existing click handlers are unchanged.
+- Fix text overflow of Send/Stop button in narrow mobile portrait. Retain its centered placement.
+- Selected 720p / 1080p button is highlighted in cyan, with inactive button visibly dark. JS active state and actual-capture mismatch warnings remain unchanged.
+- Preserve permanent sender + OBS links and existing Control Center, Receiver, audio, WebRTC and chat/message transport handlers.
+- No camera quality changes, no new network settings, no stream restart added.
+- Layout checked in emulated portrait/landscape sizes. Physical iPhone/Firefox/OBS testing still needed.
+
+Deploy all files inside this directory to GitHub Pages (web root). Close and reopen Sender to reload the new CSS/JS cache version.

@@ -1,4 +1,4 @@
-/* Remote Camera v0.11.37 — sender quality command ACK + receiver stats fixes */
+/* Remote Camera v0.11.38 — sender quality command ACK + receiver stats fixes */
 const $=s=>document.querySelector(s);
 const logEl=$('#log');
 let discoveryVdo=null, discoveryCtl=null, discoveryTimer=null, nativePresenceVdo=null;

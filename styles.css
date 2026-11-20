@@ -650,7 +650,7 @@ body.fullscreen-active .sender-call-controls{flex:none}
 .quality-retry{align-self:flex-start;margin-top:4px;padding:6px 10px;font-size:12px}
 
 
-/* v0.11.37 — minimal Sender UI. Visual-only changes; chat and streaming are untouched. */
+/* v0.11.38 — minimal Sender UI. Visual-only changes; chat and streaming are untouched. */
 /* The sender's name/platform are still in the DOM and broadcast metadata,
    but they do not take valuable picture space. */
 .sender-call-title{display:none!important}
@@ -686,10 +686,6 @@ body.fullscreen-active .sender-call-controls{flex:none}
 .sender-call-controls .call-control-btn .call-control-symbol{font-size:25px}
 .sender-call-controls .call-control-btn .call-control-symbol+span{display:none}
 .sender-call-controls .call-send-btn{height:51px;border-radius:16px;font-size:16px;padding:8px 12px}
-/* Existing smooth zoom presets are now in the Settings sheet. */
-.sender-sheet #zoomPresetFloat{position:static!important;display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;right:auto;bottom:auto;width:auto}
-.sender-sheet #zoomPresetFloat[hidden]{display:none!important}
-.sender-sheet .call-zoom-preset{min-width:74px;padding:8px 12px;background:#132c3f;border:1px solid #2e526b}
 /* Incoming messages win over indicators and remain tappable. */
 .sender-message-toast{z-index:18;pointer-events:auto}
 @media(orientation:portrait){
@@ -725,9 +721,6 @@ body.fullscreen-active .sender-call-controls{flex:none}
  }
  .sender-call-controls .call-control-btn{height:47px;border-radius:15px}
  .sender-call-controls .call-send-btn{height:49px;border-radius:15px;font-size:15px}
- .sender-zoom-preset-float{display:none} /* Old floating controls never cover the picture */
- .sender-sheet #zoomPresetFloat{display:flex} /* Still available in Settings */
- .sender-sheet #zoomPresetFloat[hidden]{display:none}
  .sender-message-toast{
    top:max(55px,calc(env(safe-area-inset-top) + 52px));
    left:auto;right:max(11px,env(safe-area-inset-right));
@@ -746,4 +739,86 @@ body.fullscreen-active .sender-call-controls{flex:none}
 @media(orientation:portrait) and (max-width:360px){
  .sender-call-top-actions{gap:4px}.call-icon-btn{width:34px;height:34px}
  .sender-call-controls{grid-template-columns:44px minmax(110px,1fr) 44px;gap:7px;padding-inline:8px}
+}
+
+/* v0.11.38 — three targeted Sender visual fixes. Do not touch messaging/WebRTC logic. */
+/* Display the already-maintained selected preset; disabled does not erase its colour. */
+.sender-quality-button{
+  display:inline-flex;align-items:center;justify-content:center;
+  flex:none;width:auto;white-space:nowrap;
+  background:rgba(14,33,48,.96);color:#d8ebf8;
+  border:1px solid #2d536c;
+  transition:background-color .12s ease,color .12s ease,border-color .12s ease;
+  -webkit-tap-highlight-color:transparent;
+}
+.sender-quality-button.active,
+.sender-quality-button[aria-pressed="true"]{
+  background:#00c0fa;color:#001823;border-color:#57dcff;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.16),0 0 0 1px rgba(0,192,250,.16);
+}
+.sender-quality-button:disabled{opacity:.82;cursor:progress}
+.sender-quality-button:focus-visible,.call-zoom-preset:focus-visible{
+  outline:2px solid #e8fbff;outline-offset:2px;
+}
+
+/* Keep the existing 0.5x / 1x quick zoom handlers, return buttons to preview. */
+.sender-call-stage>.sender-zoom-preset-float{
+  position:absolute;z-index:6;
+  top:auto;left:auto;
+  right:max(12px,env(safe-area-inset-right));bottom:12px;
+  display:flex;align-items:center;gap:6px;
+  width:max-content;max-width:calc(100% - 24px);
+  pointer-events:auto;
+}
+.sender-call-stage>.sender-zoom-preset-float[hidden]{display:none!important}
+.sender-call-stage .call-zoom-preset{
+  display:inline-flex;align-items:center;justify-content:center;
+  flex:none;width:auto;min-width:50px;height:34px;
+  padding:4px 9px;border-radius:11px;
+  background:rgba(4,18,29,.82);color:#f2faff;
+  border:1px solid rgba(182,224,246,.46);
+  font-size:13px;font-weight:800;line-height:1;
+  touch-action:manipulation;
+  box-shadow:0 4px 12px rgba(0,0,0,.20);
+}
+.sender-call-stage .call-zoom-preset[hidden]{display:none!important}
+.sender-call-stage .call-zoom-preset:active{background:#0b6e94;border-color:#66dfff}
+.sender-call-status-strip:has(#senderSimpleStatus.warntext){bottom:57px}
+
+/* Portrait: no wrapped/overflowing Send or Stop label, even on narrow phones. */
+.sender-call-controls{min-width:0;box-sizing:border-box}
+.sender-call-controls .call-send-btn{
+  min-width:0;max-width:100%;width:100%;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;
+  gap:6px;white-space:nowrap;
+}
+#sendToggleIcon{flex:0 0 auto;line-height:1}
+#sendToggleLabel{display:block;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.2}
+@media(orientation:portrait){
+  .sender-call-controls{
+    width:100%;max-width:min(100%,420px);
+    grid-template-columns:48px minmax(0,1fr) 48px;
+    column-gap:7px;
+    padding:8px max(10px,env(safe-area-inset-right)) max(7px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left));
+  }
+  .sender-call-controls .call-send-btn{font-size:clamp(13px,4vw,16px);padding:6px 8px}
+}
+@media(orientation:portrait) and (max-width:350px){
+  .sender-call-controls{grid-template-columns:42px minmax(0,1fr) 42px;column-gap:5px;padding-inline:6px}
+  .sender-call-controls .call-send-btn{font-size:14px;gap:5px;padding:5px 6px}
+  #sendToggleIcon{font-size:11px}
+}
+@media(orientation:landscape) and (max-height:620px) and (pointer:coarse){
+  .sender-call-stage>.sender-zoom-preset-float{
+    right:max(11px,env(safe-area-inset-right));
+    bottom:max(72px,calc(env(safe-area-inset-bottom) + 65px));
+    gap:5px;
+  }
+  .sender-call-stage .call-zoom-preset{min-width:49px;height:31px;padding:3px 8px;font-size:12px}
+  .sender-call-controls .call-send-btn{min-width:0;font-size:14px;padding:5px 7px}
+}
+@media(orientation:landscape) and (max-height:320px) and (pointer:coarse){
+  .sender-call-stage>.sender-zoom-preset-float{
+    bottom:max(65px,calc(env(safe-area-inset-bottom) + 58px));
+  }
 }

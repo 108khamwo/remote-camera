@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="mobile-web-app-capable" content="yes">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=01137">
+  <link rel="stylesheet" href="styles.css?v=01138">
   <title>ผู้ส่ง | ระบบ Live Streaming ระยะไกลผ่านมือถือ</title>
 </head>
 <body class="sender-call-body">
@@ -53,6 +53,11 @@
       <span class="sender-mic-label">MIC</span>
       <div class="sender-mic-track"><i id="senderMicFill"></i></div>
       <span id="senderMicState" class="sender-mic-state"></span>
+    </div>
+
+    <div id="zoomPresetFloat" class="sender-zoom-preset-float" role="group" aria-label="ซูมลัด" hidden>
+      <button id="zoomPreset05" class="call-zoom-preset" type="button" aria-label="ซูม 0.5 เท่า" title="0.5×" hidden>0.5×</button>
+      <button id="zoomPreset1" class="call-zoom-preset" type="button" aria-label="ซูม 1 เท่า" title="1×" hidden>1×</button>
     </div>
 
     <div class="sender-call-status-strip">
@@ -155,10 +160,7 @@
             <option value="fast">เร็ว</option>
           </select>
           <div id="zoomInfo" class="mini settings-hint">กด − / + ค้างเพื่อซูม</div>
-    <div id="zoomPresetFloat" class="sender-zoom-preset-float" hidden>
-      <button id="zoomPreset05" class="call-zoom-preset" type="button" hidden>0.5×</button>
-      <button id="zoomPreset1" class="call-zoom-preset" type="button" hidden>1×</button>
-    </div>
+
         </div>
 
         <div class="settings-group">
@@ -230,6 +232,6 @@
     <div id="screenRestHint" class="sender-rest-hint">พักหน้าจอแล้ว<br><small>ภาพและเสียงยังส่งตามปกติ • แตะเพื่อกลับ</small></div>
   </div>
 </main>
-<script src="sdk-loader.js?v=01137"></script><script src="sender.js?v=01137"></script><script src="fullscreen.js?v=01137"></script>
+<script src="sdk-loader.js?v=01138"></script><script src="sender.js?v=01138"></script><script src="fullscreen.js?v=01138"></script>
 </body>
 </html>
