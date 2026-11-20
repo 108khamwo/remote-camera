@@ -251,6 +251,14 @@ function receiverCodecFor(id,transport){
   return $('#codec').value||'';
 }
 
+let monitorAudioEnabled=false; // off by default to prevent feedback in the control room
+function updateMonitorAudioUi(){
+  const btn=$('#controlListenBtn'),tip=$('#controlListenTip');if(!btn)return;
+  btn.disabled=!connectedStreamId;
+  btn.setAttribute('aria-pressed',String(monitorAudioEnabled));
+  btn.textContent=monitorAudioEnabled?'ปิดฟังเสียง':'ฟังเสียง';
+  if(tip)tip.hidden=!monitorAudioEnabled;
+}
 function receiverUrl({preview=false,streamId=null}={}){
   const id=cleanId(streamId??activeId());
   if(!id)return '';
@@ -264,7 +272,7 @@ function receiverUrl({preview=false,streamId=null}={}){
   const effectiveCodec=isFixedSlot(id)?'h264':receiverCodecFor(id,transport);
   if(effectiveCodec)u.searchParams.set('codec',effectiveCodec);
   if(isFixedSlot(id)||isSmart()){u.searchParams.set('smart','1');u.searchParams.set('minbitrate',isFixedSlot(id)?'1800':$('#smartMin').value)}
-  if(preview)u.searchParams.set('preview','1');
+  if(preview){u.searchParams.set('preview','1');if(monitorAudioEnabled)u.searchParams.set('monitoraudio','1')}
   return u.href;
 }
 
@@ -743,14 +751,14 @@ function resetTelemetry(){lastTelemetry=null;setQualityStatus('รอมือ�
 async function openSelected(){
   const id=activeId();if(!id)throw new Error('ยังไม่พบกล้อง');
   const c=activeCamera();if(c?.transport==='direct')log('เปิด Native Direct จาก Stream ID โดยตรง');else if(!c?.online)log('เปิด Preview จาก Stream ID โดยตรง — ไม่รอ Auto Discovery');
-  connectedStreamId=id;smartFallbackActive=false;smartOriginalPreset=null;resetTelemetry();
+  connectedStreamId=id;smartFallbackActive=false;smartOriginalPreset=null;resetTelemetry();updateMonitorAudioUi();
   $('#remoteFrame').src=receiverUrl({preview:true,streamId:id});
   $('#status').textContent='กำลังรับภาพ';$('#status').classList.add('ok');
   log(`เปิดภาพ ${activeName()} (${id}) • ${$('#bitrate').value} kbps • ${isSmart()?'Smart':'Manual'}`);
   if(c?.transport!=='direct'){try{discoveryVdo?.sendData({type:'remote-camera-discover',targetStream:id,ts:Date.now()},{streamID:id,allowFallback:true})}catch{}}
 }
 function closeSelected(){
-  connectedStreamId='';$('#remoteFrame').src='about:blank';smartFallbackActive=false;smartOriginalPreset=null;
+  connectedStreamId='';$('#remoteFrame').src='about:blank';smartFallbackActive=false;smartOriginalPreset=null;updateMonitorAudioUi();
   $('#status').textContent='รอกล้องออนไลน์';$('#status').classList.remove('ok');$('#latency').textContent='HQ VIEW';
   $('#smartTarget').textContent=`${(Number($('#bitrate').value)/1000).toFixed(Number($('#bitrate').value)%1000?1:0)} Mbps`;
   ['smartState','smartActual','smartLoss','smartRtt','smartJitter'].forEach(id=>{const label=id+'Label';setStatVisible(id,label,false,'-')});
@@ -836,7 +844,7 @@ function removeSelectedDirect(){
   cameras=cameras.filter(x=>x.id!==id);if(selectedCameraId===id)rememberSelectedCamera('');if(connectedStreamId===id)closeSelected();saveCameras();registrySignature='';renderRegistry(null,{force:true});log(`ลบ Native Direct: ${id}`);
 }
 
-loadFixedSlots();loadCameras();seedFixedSlots();renderFixedSlots();$('#room').value=systemRoom();if($('#roomText'))$('#roomText').textContent=$('#room').value;renderRegistry();updateObs();resetTelemetry();setControlStatus('ควบคุมกล้องจากหน้ามือถือ');
+loadFixedSlots();loadCameras();seedFixedSlots();renderFixedSlots();updateMonitorAudioUi();$('#room').value=systemRoom();if($('#roomText'))$('#roomText').textContent=$('#room').value;renderRegistry();updateObs();resetTelemetry();setControlStatus('ควบคุมกล้องจากหน้ามือถือ');
 setTimeout(()=>maybeAutoOpen(),350);
 RECEIVER_CONTROLS.forEach(id=>$('#'+id).addEventListener('change',()=>{
   if(isFixedSlot(activeId()))return;
@@ -857,6 +865,14 @@ $('#importPermanentSlot').addEventListener('click',()=>{
   catch(e){alert(e.message)}
 });
 $('#cameraChips').addEventListener('click',e=>{const b=e.target.closest('[data-id]');if(b){e.preventDefault();selectCamera(b.dataset.id,{fromUser:true}).catch(x=>log(`Select error: ${x.message}`))}});
+$('#controlListenBtn').onclick=()=>{
+  if(!connectedStreamId)return;
+  monitorAudioEnabled=!monitorAudioEnabled;
+  updateMonitorAudioUi();
+  // A fresh connection is necessary: the silent preview deliberately excluded
+  // incoming audio tracks. Only this Control preview reloads; OBS is unchanged.
+  reloadPreview();
+};
 $('#controlMessageOpen').onclick=()=>{const p=$('#controlMessagePanel');p.hidden=!p.hidden;$('#controlMessageOpen').setAttribute('aria-expanded',String(!p.hidden));renderControlMessages()};
 $('#controlMessageSendSelected').onclick=()=>{const input=$('#controlMessageInput');if(sendControlMessage(input.value,{broadcast:false}))input.value=''};
 $('#controlMessageSendAll').onclick=()=>{const input=$('#controlMessageInput');if(sendControlMessage(input.value,{broadcast:true}))input.value=''};

@@ -26,6 +26,7 @@
   const codecValues=p.getAll('codec').map(v=>String(v||'').toLowerCase()).filter(v=>['h264','vp8','vp9','av1'].includes(v));
   const codec=codecValues.length?codecValues[codecValues.length-1]:'';
   const preview=p.get('preview')==='1';
+  const monitorAudio=preview&&p.get('monitoraudio')==='1';
   const direct=p.get('direct')==='1';
   const smart=p.get('smart')==='1';
   const iframe=document.getElementById('vdo');
@@ -47,8 +48,10 @@
   // iOS Native uses VP8 because its H.264 path was observed to freeze after a few seconds.
   if(codec)u.searchParams.set('codec',codec);
   if(preview){
-    // Control Center preview never plays audio; don't negotiate duplicate mic audio.
-    u.searchParams.set('noaudio','');
+    // Default preview stays video-only. Allow opt-in monitoring only after an
+    // explicit user click in Control Center; OBS remains entirely separate.
+    if(!monitorAudio)u.searchParams.set('noaudio','');
+    else u.searchParams.set('mutespeaker','0');
   }else{
     // Best-effort receiver-side hint: prioritize speech over video during congestion.
     // VDO.Ninja may ignore it on unsupported browsers / SDK publisher paths.

@@ -1,3 +1,7 @@
+## v0.11.41 TOUCH STABILITY + OPTIONAL CONTROL AUDIO
+
+ดู PATCH-v0.11.41.txt (แก้ Safari orientation hit testing และเพิ่มปุ่มฟังเสียงแบบเปิดเอง)
+
 ## v0.11.39 — แก้ปุ่มเริ่มส่งภาพตอนเปิดครั้งแรก
 
 - แก้ปุ่มเริ่มส่งภาพเลื่อนไปช่องซ้ายที่แคบเมื่อปุ่ม Zoom ซ่อนอยู่

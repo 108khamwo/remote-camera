@@ -1,0 +1,22 @@
+Remote Camera v0.11.41 — TOUCH STABILITY + OPTIONAL AUDIO MONITOR
+Based on complete v0.11.40 source.
+
+Sender:
+- Removed nested position:fixed viewport layout for mobile landscape; body is static,
+  stage remains positioned inside a single relative shell.
+- Video/background overlays do not intercept touch events; only real buttons and
+  the incoming message toast accept taps.
+- Hold-to-zoom cancels on pointer cancellation, rotation, viewport resizing,
+  blur and pagehide. Stuck pointer capture cannot drive the camera indefinitely.
+- Retires the zoom polling loop after it becomes idle and rate-limits zoom error logs.
+- Keeps 720p/1080p, permanent links, microphone, audio processing and messaging unchanged.
+
+Control Center:
+- Added explicit `ฟังเสียง` / `ปิดฟังเสียง` preview control (off by default).
+- Opting in reconnects only the preview with audio negotiated; OBS source unaffected.
+- Browser autoplay policies may require tapping play in the embedded player.
+- Use headphones when monitoring to avoid feedback; remote sender cannot hear Control.
+
+Testing limits:
+- JavaScript syntax, static wiring and Chromium touch/hit-test simulations.
+- Not yet verified on a real iPhone running Safari during a long livestream.

@@ -1,6 +1,6 @@
-/* Remote Camera v0.11.40 — AUDIO FIRST / stable direct mic / worklet gate */
+/* Remote Camera v0.11.41 — AUDIO FIRST / stable direct mic / worklet gate */
 const $=s=>document.querySelector(s); const logEl=$('#log');
-function log(m){const t=new Date().toLocaleTimeString();logEl.textContent+=`[${t}] ${m}\n`;logEl.scrollTop=logEl.scrollHeight}
+function log(m){const t=new Date().toLocaleTimeString();logEl.textContent+=`[${t}] ${m}\n`;if(logEl.textContent.length>18000)logEl.textContent=logEl.textContent.slice(-12000);logEl.scrollTop=logEl.scrollHeight}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 let cameraStream=null,audioStream=null,outStream=null,vdo=null,messageVdo=null,messageReady=false,messageViewPending=false,messageRetryTimer=null,currentFacing='environment',isPublishing=false,lastRemoteTs=0;
 let micMuted=false,explicitMicDeviceId='',micSwitchPromise=null;
@@ -230,7 +230,9 @@ function queueZoomHardware(v,{fine=true}={}){
       while(zoomState.pending){
         const req=zoomState.pending;
         zoomState.pending=null;
-        try{await applyOneZoom(req.value,{fine:req.fine})}catch(e){log(`Zoom apply error: ${e.message}`)}
+        try{await applyOneZoom(req.value,{fine:req.fine})}catch(e){
+          if(Date.now()-(zoomState.lastErrorLogAt||0)>2500){zoomState.lastErrorLogAt=Date.now();log(`Zoom apply error: ${e.message}`)}
+        }
       }
     }finally{zoomState.applying=false}
   })();
@@ -257,8 +259,14 @@ function ensureZoomLoop(){
       zoomState.velocity=0;zoomState.coasting=false;zoomState.target=zoomState.virtual;return;
     }
     if(!zoomState.drive&&!zoomState.coasting&&Math.abs(zoomState.target-zoomState.virtual)<.004&&Math.abs(zoomState.velocity)<.01){
-      zoomState.velocity=0;return;
+      zoomState.velocity=0;
+      // Retire the 30 Hz loop while idle. Previously it ran for the entire
+      // session after any zoom press, even when the camera wasn't moving.
+      zoomState.idleTicks=(zoomState.idleTicks||0)+1;
+      if(zoomState.idleTicks>=24){clearInterval(zoomState.timer);zoomState.timer=null;zoomState.idleTicks=0}
+      return;
     }
+    zoomState.idleTicks=0;
     let next=clamp(zoomState.virtual+zoomState.velocity*dt,zoomState.min,zoomState.max);
     if(!zoomState.drive&&!zoomState.coasting){
       const before=zoomState.target-zoomState.virtual,after=zoomState.target-next;
@@ -402,7 +410,7 @@ async function installMicGate(p){
     let deadline;
     try{
       await Promise.race([
-        p.context.audioWorklet.addModule('./mic-gate-worklet.js?v=01140'),
+        p.context.audioWorklet.addModule('./mic-gate-worklet.js?v=01141'),
         new Promise((_,reject)=>{deadline=setTimeout(()=>reject(new Error('AudioWorklet timeout')),2500)})
       ]);
     }finally{clearTimeout(deadline)}
@@ -1337,32 +1345,59 @@ $('#applyDeviceBtn').onclick=()=>{const id=$('#deviceSelect').value;if(!id){expl
 $('#zoomSpeed').onchange=()=>{updateZoomUi();sendTelemetry()};
 $('#zoomPreset05').onclick=()=>smoothZoomPreset(0.5);
 $('#zoomPreset1').onclick=()=>smoothZoomPreset(1);
+// iOS Safari can lose pointerup when the phone rotates or browser chrome moves.
+// Do not leave an active zoom drive or a pointer capture holding the screen.
 function bindHoldZoom(btn,dir){
   let activePointer=null;
-  const block=e=>{e.preventDefault();e.stopPropagation();};
-  const start=e=>{
-    block(e);
-    if(!zoomState.supported)return;
-    activePointer=e.pointerId ?? 'mouse';
-    try{if(e.pointerId!=null)btn.setPointerCapture(e.pointerId)}catch{}
-    btn.classList.add('holding');
-    setZoomDrive(dir);
-  };
-  const stop=e=>{
-    if(e){e.preventDefault();e.stopPropagation()}
+  const block=e=>{e.preventDefault();e.stopPropagation()};
+  const cancel=()=>{
     if(activePointer===null)return;
-    try{if(e?.pointerId!=null && btn.hasPointerCapture?.(e.pointerId))btn.releasePointerCapture(e.pointerId)}catch{}
+    const p=activePointer;
     activePointer=null;
     btn.classList.remove('holding');
-    setZoomDrive(0);
+    try{if(typeof p==='number'&&btn.hasPointerCapture?.(p))btn.releasePointerCapture(p)}catch{}
+    // Stop immediately. Coasting on lost/cancelled touch can look like a frozen UI.
+    zoomState.drive=0;zoomState.coasting=false;zoomState.velocity=0;
+    zoomState.target=zoomState.virtual;
+  };
+  const start=e=>{
+    block(e);
+    if(!zoomState.supported||activePointer!==null)return;
+    activePointer=e.pointerId??'mouse';
+    try{if(e.pointerId!=null)btn.setPointerCapture(e.pointerId)}catch{}
+    btn.classList.add('holding');setZoomDrive(dir);
+  };
+  const stop=e=>{
+    if(activePointer===null)return;
+    if(e?.pointerId!=null&&e.pointerId!==activePointer)return;
+    if(e?.currentTarget===btn){e.preventDefault();e.stopPropagation()}
+    cancel();
   };
   btn.addEventListener('pointerdown',start);
   btn.addEventListener('pointerup',stop);
   btn.addEventListener('pointercancel',stop);
-  btn.addEventListener('lostpointercapture',()=>{if(activePointer!==null)stop()});
+  btn.addEventListener('lostpointercapture',cancel);
+  window.addEventListener('pointerup',stop,{passive:true});
+  window.addEventListener('pointercancel',stop,{passive:true});
   ['contextmenu','selectstart','dragstart'].forEach(type=>btn.addEventListener(type,block));
+  return cancel;
 }
-bindHoldZoom($('#zoomOutBtn'),-1);bindHoldZoom($('#zoomInBtn'),1);
+const cancelZoomOut=bindHoldZoom($('#zoomOutBtn'),-1);
+const cancelZoomIn=bindHoldZoom($('#zoomInBtn'),1);
+function resetSenderPointerState(){
+  cancelZoomOut();cancelZoomIn();
+  // No camera restart. Recompute hit testing on the browser's next frame.
+  const shell=$('.sender-call-shell');if(shell){void shell.offsetHeight}
+}
+window.addEventListener('orientationchange',()=>{
+  resetSenderPointerState();setTimeout(resetSenderPointerState,250);setTimeout(resetSenderPointerState,750);
+},{passive:true});
+let viewportResetTimer=0;
+const onViewportChange=()=>{clearTimeout(viewportResetTimer);viewportResetTimer=setTimeout(resetSenderPointerState,180)};
+window.addEventListener('resize',onViewportChange,{passive:true});
+window.visualViewport?.addEventListener('resize',onViewportChange,{passive:true});
+window.addEventListener('blur',resetSenderPointerState);
+window.addEventListener('pagehide',resetSenderPointerState);
 $('#senderQuality1080').onclick=()=>selectSenderQuality('1080_30');
 $('#senderQuality720').onclick=()=>selectSenderQuality('720_30');
 $('#quality').onchange=()=>selectSenderQuality($('#quality').value);
@@ -1410,9 +1445,9 @@ document.addEventListener('visibilitychange',()=>{
   }
 });
 window.addEventListener('beforeunload',()=>stopAll());
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=01140').catch(()=>{});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=01141').catch(()=>{});
 $('#statHint').textContent=q().hint;
 $('#statSmartProfile').textContent=smartProfile;
 initIdentity();updateSimpleStatus();updateMicUi();updateMicGainUi();updateMicNoiseUi();
 $('#newStreamId').onclick=generateNewStreamId;
-log(`v0.11.40 AUDIO FIRST พร้อมใช้งาน — Sender quick quality presets / Mic Volume & Noise Reduction / Control Data Hub — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
+log(`v0.11.41 AUDIO FIRST พร้อมใช้งาน — Sender quick quality presets / Mic Volume & Noise Reduction / Control Data Hub — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
