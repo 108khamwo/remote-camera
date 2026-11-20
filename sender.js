@@ -2,7 +2,7 @@ const $=s=>document.querySelector(s); const logEl=$('#log');
 function log(m){const t=new Date().toLocaleTimeString();logEl.textContent+=`[${t}] ${m}\n`;logEl.scrollTop=logEl.scrollHeight}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 let cameraStream=null,audioStream=null,outStream=null,vdo=null,messageVdo=null,messageReady=false,messageViewPending=false,messageRetryTimer=null,currentFacing='environment',isPublishing=false,lastRemoteTs=0;
-let micMuted=false;
+let micMuted=false,explicitMicDeviceId='',micSwitchPromise=null;
 const processedRemoteCommands=new Map();
 let explicitDeviceId='', openingCamera=false;
 let peerIds=new Set();
@@ -27,7 +27,7 @@ function updateMicUi(){
   const live=audioStream?.getAudioTracks?.()[0];
   if(live)live.enabled=!micMuted;
   const stat=$('#statMic');
-  if(stat)stat.textContent=audioStream?(micMuted?'MUTED':'ON'):(micMuted?'ปิดเสียง':'-');
+  if(stat)stat.textContent=audioStream?.getAudioTracks?.()[0]?.readyState==='live'?(micMuted?'MUTED':'ON'):(micMuted?'ปิดเสียง':'-');
 }
 function setMicMuted(muted,{silent=false}={}){
   micMuted=!!muted;
@@ -90,6 +90,7 @@ function initIdentity(){
   $('#platformBadge').textContent=`${PLATFORM} • ${BROWSER}`;
   $('#statPlatform').textContent=`${PLATFORM} / ${BROWSER}`;
   $('#cameraHelp').textContent=IS_ANDROID?'Android: ใช้ “กล้องหน้า / กล้องหลัง” เป็นหลัก ครั้งแรกถ้าเบราว์เซอร์ถามให้เลือก “อัตโนมัติ” และจดจำตัวเลือกถ้ามี':'ใช้ “กล้องหน้า / กล้องหลัง” เป็นหลัก รายชื่อเลนส์รายตัวอยู่ในตัวเลือกขั้นสูง';
+  $('#micDeviceHint').textContent=IS_IOS?'iPhone/iPad: Safari อาจไม่แสดงไมค์นอกทั้งหมด หรือเลือกแล้วไม่เปลี่ยนแหล่งเสียงจริง ให้ทดสอบเสียงที่ OBS': 'หากไม่พบไมค์นอก ให้เสียบก่อนเปิดเว็บ อนุญาตไมโครโฟน แล้วกดค้นหาใหม่';
   const syncCameraName=()=>{const name=$('#cameraName').value.trim();localStorage.setItem('remoteCamName',name);if($('#mainCameraName'))$('#mainCameraName').textContent=name||'Remote Camera'};
   $('#cameraName').addEventListener('input',syncCameraName);syncCameraName();
 }
@@ -263,12 +264,90 @@ async function listDevices(){
   $('#statDevices').textContent=`${cams.length} กล้อง`;
 }
 
+// Audio input selection is independent of camera selection. Device IDs are not
+// persisted because browsers can rotate them when site permissions change.
+function micCaptureOptions(deviceId=''){
+  return {audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false,
+    ...(deviceId?{deviceId:{exact:deviceId}}:{})},video:false};
+}
+function activeMicTrack(){return audioStream?.getAudioTracks?.()[0]||null}
+function micName(track){return track?.label?.trim()||'ไมโครโฟนที่ระบบเลือก'}
+function micStatus(message){const el=$('#micDeviceStatus');if(el)el.textContent=message}
+async function listMicrophones({requestPermission=false}={}){
+  const md=navigator.mediaDevices;
+  if(!md?.enumerateDevices){micStatus('เบราว์เซอร์นี้ไม่รองรับการแสดงรายชื่อไมค์');return}
+  let temporary=null;
+  try{
+    // An explicit tap on Refresh is a user gesture: request permission so
+    // browsers can reveal device names rather than anonymous audioinput entries.
+    if(requestPermission && activeMicTrack()?.readyState!=='live'){
+      temporary=await md.getUserMedia({audio:true,video:false});
+    }
+    const devices=await md.enumerateDevices();
+    const mics=devices.filter(d=>d.kind==='audioinput');
+    const sel=$('#micDeviceSelect');
+    const wanted=sel.value||explicitMicDeviceId;
+    const active=activeMicTrack();
+    const activeId=active?.getSettings?.().deviceId||'';
+    sel.replaceChildren();
+    const auto=document.createElement('option');auto.value='';auto.textContent='อัตโนมัติ / ไมค์ที่ระบบเลือก';sel.appendChild(auto);
+    mics.forEach((d,i)=>{
+      const option=document.createElement('option');option.value=d.deviceId;
+      option.textContent=`${i+1}. ${d.label||`ไมโครโฟน ${i+1}`}${d.deviceId&&d.deviceId===activeId?' • กำลังใช้':''}`;
+      sel.appendChild(option);
+    });
+    sel.value=mics.some(d=>d.deviceId && d.deviceId===wanted)?wanted:'';
+    if(active?.readyState==='live')micStatus(`กำลังใช้: ${micName(active)}${micMuted?' (ปิดเสียงอยู่)':''} | พบ ${mics.length} รายการ`);
+    else micStatus(mics.length?`พบ ${mics.length} รายการ • เลือกแล้วกด “ใช้ไมค์ที่เลือก”`:'ไม่พบไมโครโฟน ตรวจสอบสิทธิ์และการเชื่อมต่อ');
+    return mics;
+  }catch(e){
+    micStatus(`ค้นหาไมค์ไม่สำเร็จ: ${e.name||'Error'} — ${e.message}`);
+    log(`Mic list error: ${e.name||''} ${e.message}`);
+  }finally{temporary?.getTracks?.().forEach(t=>t.stop())}
+}
+async function selectMicrophone(deviceId=''){
+  // Serialize mic capture + live WebRTC replacement to prevent duplicate tracks.
+  if(micSwitchPromise)await micSwitchPromise;
+  const change=(async()=>{
+    const oldStream=audioStream,oldTrack=activeMicTrack();
+    let newStream=null;
+    try{
+      micStatus('กำลังเชื่อมต่อไมโครโฟน…');
+      newStream=await navigator.mediaDevices.getUserMedia(micCaptureOptions(deviceId));
+      const nextTrack=newStream.getAudioTracks()[0];
+      if(!nextTrack)throw new Error('เบราว์เซอร์ไม่ได้ส่ง Audio Track กลับมา');
+      nextTrack.enabled=!micMuted;
+      // VDO.Ninja SDK 1.5.5 can replace tracks on the existing connection;
+      // do not stop the old track until replacement has succeeded.
+      if(isPublishing&&vdo&&oldTrack){
+        await vdo.replaceTrack(oldTrack,nextTrack);
+      }
+      if(outStream){
+        if(oldTrack)outStream.removeTrack(oldTrack);
+        if(!outStream.getAudioTracks().includes(nextTrack))outStream.addTrack(nextTrack);
+      }
+      audioStream=newStream;
+      explicitMicDeviceId=deviceId;
+      if(oldStream&&oldStream!==newStream)oldStream.getTracks().forEach(t=>t.stop());
+      updateMicUi();
+      log(`ไมโครโฟนพร้อม: ${micName(nextTrack)}${micMuted?' (MUTED)':''}`);
+      await listMicrophones();
+      if(isPublishing)setTimeout(sendTelemetry,50);
+      return nextTrack;
+    }catch(e){
+      if(newStream)newStream.getTracks().forEach(t=>t.stop());
+      micStatus(`เลือกไมค์ไม่สำเร็จ: ${e.message} • ลองหยุดส่งภาพแล้วเลือกใหม่`);
+      log(`Mic switch error: ${e.name||''} ${e.message}`);
+      throw e;
+    }
+  })();
+  micSwitchPromise=change;
+  try{return await change}finally{if(micSwitchPromise===change)micSwitchPromise=null}
+}
 async function ensureMic(){
-  if(audioStream){updateMicUi();return}
-  audioStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false},video:false});
-  audioStream.getAudioTracks().forEach(t=>{t.enabled=!micMuted});
-  updateMicUi();
-  log(micMuted?'เปิดไมโครโฟนแล้ว (ปิดเสียงอยู่)':'เปิดไมโครโฟนแล้ว');
+  if(micSwitchPromise)await micSwitchPromise;
+  if(activeMicTrack()?.readyState==='live'){updateMicUi();return}
+  await selectMicrophone(explicitMicDeviceId);
 }
 
 async function getCamera(constraints){
@@ -765,9 +844,23 @@ $('#quality').onchange=async()=>{
 };
 function openSheet(id){const el=$(id);if(el){el.hidden=false;document.body.style.overflow='hidden'}}
 function closeSheets(){['#settingsSheet','#messageSheet'].forEach(id=>{const el=$(id);if(el)el.hidden=true});document.body.style.overflow=''}
-$('#settingsOpenBtn').onclick=()=>openSheet('#settingsSheet');
+$('#settingsOpenBtn').onclick=()=>{openSheet('#settingsSheet');listMicrophones().catch(()=>{})};
 $('#messageOpenBtn').onclick=()=>openSheet('#messageSheet');
 $('#micToggleBtn').onclick=()=>setMicMuted(!micMuted);
+$('#refreshMicBtn').onclick=async()=>{
+  const btn=$('#refreshMicBtn');btn.disabled=true;
+  try{await listMicrophones({requestPermission:true})}finally{btn.disabled=false}
+};
+$('#applyMicBtn').onclick=async()=>{
+  const btn=$('#applyMicBtn');btn.disabled=true;
+  try{await selectMicrophone($('#micDeviceSelect').value)}catch{}
+  finally{btn.disabled=false}
+};
+if(navigator.mediaDevices?.addEventListener){
+  navigator.mediaDevices.addEventListener('devicechange',()=>{
+    if(!$('#settingsSheet').hidden)listMicrophones().catch(()=>{});
+  });
+}
 document.querySelectorAll('[data-close-settings],[data-close-message]').forEach(el=>el.addEventListener('click',closeSheets));
 $('#screenRestBtn').onclick=()=>setScreenRest(true);
 $('#screenRestOverlay').addEventListener('click',()=>setScreenRest(false));
@@ -782,4 +875,4 @@ $('#statHint').textContent=q().hint;
 $('#statSmartProfile').textContent=smartProfile;
 initIdentity();updateSimpleStatus();updateMicUi();
 $('#newStreamId').onclick=generateNewStreamId;
-log(`v0.11.14 พร้อมใช้งาน — Control Data Hub — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
+log(`v0.11.27 พร้อมใช้งาน — Mic Input Selection / Control Data Hub — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);

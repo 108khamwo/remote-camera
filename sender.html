@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="mobile-web-app-capable" content="yes">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=01124">
+  <link rel="stylesheet" href="styles.css?v=01127">
   <title>ผู้ส่ง | ระบบ Live Streaming ระยะไกลผ่านมือถือ</title>
 </head>
 <body class="sender-call-body">
@@ -101,6 +101,19 @@
         </div>
 
         <div class="settings-group">
+          <label for="micDeviceSelect">ไมโครโฟน (Audio Input)</label>
+          <select id="micDeviceSelect" aria-label="เลือกไมโครโฟน">
+            <option value="">อัตโนมัติ / ไมค์ที่ระบบเลือก</option>
+          </select>
+          <div class="settings-button-row" style="margin-top:8px">
+            <button id="refreshMicBtn" class="ghost" type="button">ค้นหาไมค์</button>
+            <button id="applyMicBtn" class="ghost" type="button">ใช้ไมค์ที่เลือก</button>
+          </div>
+          <div id="micDeviceStatus" class="mini settings-hint" role="status">เสียบไมค์แล้วกดค้นหาไมค์</div>
+          <div id="micDeviceHint" class="mini settings-hint">ชื่อไมค์จะขึ้นหลังอนุญาตใช้ไมโครโฟน</div>
+        </div>
+
+        <div class="settings-group">
           <label>สลับกล้อง</label>
           <div class="settings-button-row">
             <button id="frontBtn" class="ghost" type="button">กล้องหน้า</button>
@@ -187,6 +200,6 @@
     <div id="screenRestHint" class="sender-rest-hint">พักหน้าจอแล้ว<br><small>ภาพและเสียงยังส่งตามปกติ • แตะเพื่อกลับ</small></div>
   </div>
 </main>
-<script src="sdk-loader.js?v=01111"></script><script src="sender.js?v=01124"></script><script src="fullscreen.js?v=01124"></script>
+<script src="sdk-loader.js?v=01111"></script><script src="sender.js?v=01127"></script><script src="fullscreen.js?v=01124"></script>
 </body>
 </html>
