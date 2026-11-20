@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="mobile-web-app-capable" content="yes">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=01128">
+  <link rel="stylesheet" href="styles.css?v=01129">
   <title>ผู้ส่ง | ระบบ Live Streaming ระยะไกลผ่านมือถือ</title>
 </head>
 <body class="sender-call-body">
@@ -51,6 +51,12 @@
     <div id="zoomPresetFloat" class="sender-zoom-preset-float" hidden>
       <button id="zoomPreset05" class="call-zoom-preset" type="button" hidden>0.5×</button>
       <button id="zoomPreset1" class="call-zoom-preset" type="button" hidden>1×</button>
+    </div>
+
+    <div id="senderMicLevel" class="sender-mic-level" aria-label="ระดับเสียงไมค์ขณะส่งภาพ" hidden>
+      <span class="sender-mic-label">MIC</span>
+      <div class="sender-mic-track"><i id="senderMicFill"></i></div>
+      <span id="senderMicState" class="sender-mic-state"></span>
     </div>
 
     <div class="sender-call-status-strip">
@@ -101,7 +107,7 @@
         </div>
 
         <div class="settings-group">
-          <label for="micDeviceSelect">ไมโครโฟน (Audio Input)</label>
+          <label for="micDeviceSelect">ไมโครโฟน</label>
           <select id="micDeviceSelect" aria-label="เลือกไมโครโฟน">
             <option value="">อัตโนมัติ / ไมค์ที่ระบบเลือก</option>
           </select>
@@ -109,8 +115,7 @@
             <button id="refreshMicBtn" class="ghost" type="button">ค้นหาไมค์</button>
             <button id="applyMicBtn" class="ghost" type="button">ใช้ไมค์ที่เลือก</button>
           </div>
-          <div id="micDeviceStatus" class="mini settings-hint" role="status">เสียบไมค์แล้วกดค้นหาไมค์</div>
-          <div id="micDeviceHint" class="mini settings-hint">ชื่อไมค์จะขึ้นหลังอนุญาตใช้ไมโครโฟน</div>
+          <div id="micDeviceStatus" class="mini settings-hint" role="status"></div>
         </div>
 
         <div class="settings-group mic-audio-settings">
@@ -122,12 +127,11 @@
             <input id="micGainRange" type="range" min="0" max="200" step="5" value="100" aria-label="ปรับความดังไมโครโฟน">
             <button id="micGainResetBtn" class="ghost" type="button">100%</button>
           </div>
-          <div id="micGainStatus" class="mini settings-hint">100% = เสียงเดิม • 0% = เงียบ • สูงสุด 200%</div>
           <label class="mic-noise-control" for="micNoiseToggle">
-            <span class="mic-noise-copy"><strong>ลดเสียงรบกวน (Noise Suppression)</strong><small>ลดเสียงรอบข้าง เช่น พัดลม/เสียงฮัม</small></span>
+            <span class="mic-noise-copy"><strong>ลดเสียงรบกวน</strong></span>
             <input id="micNoiseToggle" type="checkbox" role="switch" aria-label="เปิดหรือปิดระบบลดเสียงรบกวน">
           </label>
-          <div id="micNoiseStatus" class="mini settings-hint" role="status">ปิด • เสียงธรรมชาติ</div>
+          <div id="micNoiseStatus" class="mini settings-hint" role="status" hidden></div>
         </div>
 
         <div class="settings-group">
@@ -217,6 +221,6 @@
     <div id="screenRestHint" class="sender-rest-hint">พักหน้าจอแล้ว<br><small>ภาพและเสียงยังส่งตามปกติ • แตะเพื่อกลับ</small></div>
   </div>
 </main>
-<script src="sdk-loader.js?v=01111"></script><script src="sender.js?v=01128"></script><script src="fullscreen.js?v=01124"></script>
+<script src="sdk-loader.js?v=01111"></script><script src="sender.js?v=01129"></script><script src="fullscreen.js?v=01124"></script>
 </body>
 </html>

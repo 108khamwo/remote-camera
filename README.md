@@ -1,4 +1,4 @@
-# ระบบ Live Streaming ระยะไกลผ่านมือถือ v0.11.28 — Mic Volume + Noise Suppression
+# ระบบ Live Streaming ระยะไกลผ่านมือถือ v0.11.29 — Mic Volume + Noise Switch + Live Audio Meter
 
 พัฒนาต่อจาก v0.11.27-MIC-SELECT ที่แนบมา โดยปรับ `sender.html`, `sender.js`, `styles.css` และอัปเดต cache `sw.js` เท่านั้น
 
@@ -106,3 +106,9 @@
 - Control Center ใช้ Telemetry เป็น Auto Discovery สำรอง/ยืนยัน โดยยังรักษา transport เป็น Direct
 - Requested / Camera settings / Measured FPS / Camera / ผล FPS / Smart profile จะแสดงข้อมูล Native เมื่อได้รับ Telemetry
 - กล้อง Native Direct ไม่ถูกเปลี่ยนเป็น Room เมื่อ Telemetry เข้ามา จึงไม่ทำให้ Preview/OBS URL เสีย
+
+
+### v0.11.29 microphone fix
+- The noise-reduction toggle is not disabled solely because getSupportedConstraints omits noiseSuppression. Requests native suppression first; if not confirmed, a conservative Web Audio **noise gate** attenuates quiet sound **between** phrases (not full AI denoising).
+- Added an animated meter for the outgoing microphone track on the active sender stage; mute reads zero. The meter never plays microphone audio locally.
+- Simplified visible microphone settings and added cache-busting version 01129.

@@ -590,3 +590,29 @@ body.fullscreen-active .sender-call-controls{flex:none}
 #micNoiseToggle:checked::before{transform:translateX(21px);background:#fff}
 #micNoiseToggle:focus-visible{outline:2px solid #c4f3ff;outline-offset:3px}
 #micNoiseToggle:disabled{opacity:.45;cursor:not-allowed}
+
+/* v0.11.29 — slim, animated sender mic monitor (no audio feedback to speaker) */
+.sender-mic-level{
+  position:absolute;z-index:3;
+  left:max(14px,env(safe-area-inset-left));
+  bottom:max(128px,calc(env(safe-area-inset-bottom) + 119px));
+  display:flex;align-items:center;gap:8px;
+  width:max-content;max-width:calc(100vw - 28px);
+  padding:7px 10px;border-radius:12px;
+  border:1px solid rgba(220,244,255,.20);
+  background:rgba(2,12,20,.64);backdrop-filter:blur(7px);
+  pointer-events:none;
+}
+.sender-mic-level[hidden]{display:none!important}
+.sender-mic-label{font-size:11px;font-weight:850;color:#e2f5ff;letter-spacing:.07em}
+.sender-mic-track{height:9px;width:108px;border-radius:100px;overflow:hidden;background:#243746}
+#senderMicFill{display:block;width:100%;height:100%;transform-origin:left center;transform:scaleX(0);
+  background:linear-gradient(90deg,#30d49b 0%,#7be08c 55%,#ffe080 80%,#fb6b70 100%);
+  border-radius:100px;will-change:transform}
+.sender-mic-state{font-size:10px;font-weight:700;color:#ffd0d0}
+.sender-mic-state:empty{display:none}
+.sender-mic-level.is-muted .sender-mic-track{opacity:.5}
+.sender-mic-level.is-muted .sender-mic-label{color:#ffb2b8}
+.mic-audio-settings #micNoiseStatus[hidden]{display:none!important}
+.mic-audio-settings #micNoiseStatus:not([hidden]){margin-top:6px;font-size:11px}
+@media(max-width:370px){.sender-mic-track{width:82px}.sender-mic-level{padding:6px 8px}}

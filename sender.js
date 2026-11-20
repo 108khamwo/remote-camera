@@ -36,6 +36,7 @@ function updateMicUi(){
   if(outgoing&&outgoing!==live)outgoing.enabled=!micMuted;
   const stat=$('#statMic');
   if(stat)stat.textContent=audioStream?.getAudioTracks?.()[0]?.readyState==='live'?(micMuted?'MUTED':'ON'):(micMuted?'ปิดเสียง':'-');
+  setMicMeterVisible();
 }
 function setMicMuted(muted,{silent=false}={}){
   micMuted=!!muted;
@@ -98,7 +99,6 @@ function initIdentity(){
   $('#platformBadge').textContent=`${PLATFORM} • ${BROWSER}`;
   $('#statPlatform').textContent=`${PLATFORM} / ${BROWSER}`;
   $('#cameraHelp').textContent=IS_ANDROID?'Android: ใช้ “กล้องหน้า / กล้องหลัง” เป็นหลัก ครั้งแรกถ้าเบราว์เซอร์ถามให้เลือก “อัตโนมัติ” และจดจำตัวเลือกถ้ามี':'ใช้ “กล้องหน้า / กล้องหลัง” เป็นหลัก รายชื่อเลนส์รายตัวอยู่ในตัวเลือกขั้นสูง';
-  $('#micDeviceHint').textContent=IS_IOS?'iPhone/iPad: Safari อาจไม่แสดงไมค์นอกทั้งหมด หรือเลือกแล้วไม่เปลี่ยนแหล่งเสียงจริง ให้ทดสอบเสียงที่ OBS': 'หากไม่พบไมค์นอก ให้เสียบก่อนเปิดเว็บ อนุญาตไมโครโฟน แล้วกดค้นหาใหม่';
   const syncCameraName=()=>{const name=$('#cameraName').value.trim();localStorage.setItem('remoteCamName',name);if($('#mainCameraName'))$('#mainCameraName').textContent=name||'Remote Camera'};
   $('#cameraName').addEventListener('input',syncCameraName);syncCameraName();
 }
@@ -272,7 +272,7 @@ async function listDevices(){
   $('#statDevices').textContent=`${cams.length} กล้อง`;
 }
 
-// v0.11.28: audio input controls independent of the camera path.
+// v0.11.29: audio input controls independent of the camera path.
 // The raw microphone stays separate from the WebRTC audio track so software
 // gain can be changed in real time without reopening the microphone.
 function micCaptureOptions(deviceId=''){
@@ -283,36 +283,40 @@ function activeMicTrack(){return audioStream?.getAudioTracks?.()[0]||null}
 function micOutgoingTrack(){return micProcessor?.outgoingTrack||activeMicTrack()}
 function micName(track){return track?.label?.trim()||'ไมโครโฟนที่ระบบเลือก'}
 function micStatus(message){const el=$('#micDeviceStatus');if(el)el.textContent=message}
-function noiseSupported(){return !!navigator.mediaDevices?.getSupportedConstraints?.().noiseSuppression}
+function nativeMicNoiseState(track=activeMicTrack()){
+  // A capability flag alone is not proof of an active DSP pipeline.
+  const value=track?.getSettings?.().noiseSuppression;
+  return typeof value==='boolean'?value:null;
+}
+function softwareNoiseActive(track=activeMicTrack()){
+  return micNoiseSuppressionEnabled && nativeMicNoiseState(track)!==true;
+}
 function updateMicNoiseUi(message=''){
-  const toggle=$('#micNoiseToggle'),el=$('#micNoiseStatus');
-  const supported=noiseSupported();
-  if(toggle){toggle.checked=micNoiseSuppressionEnabled;toggle.disabled=!supported}
-  if(!el)return;
-  if(message){el.textContent=message;return}
-  if(!supported){el.textContent='เบราว์เซอร์นี้ไม่รองรับการตั้งค่าลดเสียงรบกวน';return}
-  const track=activeMicTrack();
-  if(!track?.readyState||track.readyState!=='live'){
-    el.textContent=`${micNoiseSuppressionEnabled?'เปิด':'ปิด'} • จะใช้ค่าเมื่อเริ่มเปิดไมค์`;
-    return;
-  }
-  const current=track.getSettings?.().noiseSuppression;
-  if(typeof current==='boolean'){
-    el.textContent=current===micNoiseSuppressionEnabled
-      ?`สถานะที่เบราว์เซอร์รายงาน: ${current?'เปิด':'ปิด'}`
-      :`เบราว์เซอร์ยังรายงานว่า ${current?'เปิด':'ปิด'} • อาจไม่รองรับการเปลี่ยนค่านี้`;
-  }else{
-    el.textContent=`ส่งค่าขอ${micNoiseSuppressionEnabled?'เปิด':'ปิด'}แล้ว • เบราว์เซอร์ไม่รายงานสถานะจริง`;
-  }
+  const toggle=$('#micNoiseToggle'),status=$('#micNoiseStatus');
+  if(toggle)toggle.checked=micNoiseSuppressionEnabled;
+  if(!status)return;
+  if(!micNoiseSuppressionEnabled){status.textContent='';status.hidden=true;return}
+  const live=activeMicTrack()?.readyState==='live';
+  const native=nativeMicNoiseState();
+  const text=message || (!live?'เปิดเมื่อเริ่มใช้ไมค์':
+    native===true?'เปิด • ระบบไมค์':
+    micProcessor&&!micProcessor.fallback?'เปิด • กรองเสียงเบาช่วงไม่พูด':
+    'เปิด • รอการยืนยันจากเบราว์เซอร์');
+  status.textContent=text;status.hidden=!text;
+}
+function updateMicNoiseProcessing(){
+  const p=micProcessor;
+  if(!p?.gateGain||!p.context)return;
+  p.softNoiseEnabled=softwareNoiseActive();
+  p.gateIsClosed=false;
+  p.lastVoiceMs=0;
+  p.gateGain.gain.setTargetAtTime(1,p.context.currentTime,.018);
+  updateMicNoiseUi();
 }
 function updateMicGainUi(){
-  const readout=$('#micGainValue'),slider=$('#micGainRange'),hint=$('#micGainStatus');
+  const readout=$('#micGainValue'),slider=$('#micGainRange');
   if(readout)readout.textContent=`${micGainPercent}%`;
   if(slider&&Number(slider.value)!==micGainPercent)slider.value=String(micGainPercent);
-  if(hint)hint.textContent=micProcessor?.fallback
-    ?'เบราว์เซอร์นี้ไม่สามารถปรับความดังได้ (ส่งเสียงไมค์ตรง)'
-    :micGainPercent>100?'ขยายเสียงแล้ว • ถ้าเสียงแตก ให้ลดลงใกล้ 100%'
-     :'100% = เสียงเดิม • 0% = เงียบ • สูงสุด 200%';
   if(slider)slider.disabled=!!micProcessor?.fallback;
   const reset=$('#micGainResetBtn');if(reset)reset.disabled=!!micProcessor?.fallback;
 }
@@ -330,14 +334,13 @@ function setMicGain(value){
 }
 function closeMicProcessor(processor){
   if(!processor)return;
-  try{processor.source?.disconnect()}catch{}
-  try{processor.gainNode?.disconnect()}catch{}
+  for(const node of [processor.source,processor.inputAnalyser,processor.gateGain,processor.gainNode,processor.outputAnalyser]){
+    try{node?.disconnect()}catch{}
+  }
   if(processor.outgoingTrack&&processor.outgoingTrack!==processor.rawTrack){
     try{processor.outgoingTrack.stop()}catch{}
   }
-  if(processor.context&&processor.context.state!=='closed'){
-    processor.context.close().catch(()=>{});
-  }
+  if(processor.context&&processor.context.state!=='closed')processor.context.close().catch(()=>{});
 }
 function createMicProcessor(stream){
   const rawTrack=stream.getAudioTracks()[0];
@@ -347,22 +350,86 @@ function createMicProcessor(stream){
   try{
     context=new Context({latencyHint:'interactive'});
     const source=context.createMediaStreamSource(stream);
-    const gainNode=context.createGain();
+    const inputAnalyser=context.createAnalyser();inputAnalyser.fftSize=1024;
+    const gateGain=context.createGain();gateGain.gain.value=1;
+    const gainNode=context.createGain();gainNode.gain.value=micGainPercent/100;
+    const outputAnalyser=context.createAnalyser();outputAnalyser.fftSize=1024;
     const destination=context.createMediaStreamDestination();
-    gainNode.gain.value=micGainPercent/100;
     try{destination.channelCount=1}catch{}
-    source.connect(gainNode);
-    gainNode.connect(destination);
+    // Only the outgoing stream goes to WebRTC. No local audio playback/echo.
+    source.connect(inputAnalyser);
+    inputAnalyser.connect(gateGain);
+    gateGain.connect(gainNode);
+    gainNode.connect(outputAnalyser);
+    outputAnalyser.connect(destination);
     const outgoingTrack=destination.stream.getAudioTracks()[0];
     if(!outgoingTrack)throw new Error('ไม่มี audio track จาก Web Audio');
     outgoingTrack.enabled=!micMuted;
     if(context.state==='suspended')context.resume().catch(e=>log(`AudioContext resume: ${e.message}`));
-    return {context,source,gainNode,destination,rawTrack,outgoingTrack,fallback:false};
+    return {context,source,inputAnalyser,gateGain,gainNode,outputAnalyser,destination,
+      rawTrack,outgoingTrack,fallback:false,
+      inputData:new Float32Array(inputAnalyser.fftSize),
+      outputData:new Float32Array(outputAnalyser.fftSize),
+      softNoiseEnabled:softwareNoiseActive(rawTrack),lastVoiceMs:0,gateIsClosed:false};
   }catch(e){
     if(context&&context.state!=='closed')context.close().catch(()=>{});
-    log(`Web Audio gain unavailable: ${e.message}`);
+    log(`Web Audio unavailable: ${e.message}`);
     return {rawTrack,outgoingTrack:rawTrack,fallback:true};
   }
+}
+// A lightweight fallback *noise gate*, not full speech-aware denoising.
+// It attenuates low-level sound only between speech phrases, so speech is preserved.
+function micRms(analyser,data){
+  if(!analyser||!data)return 0;
+  analyser.getFloatTimeDomainData(data);
+  let power=0;
+  for(let i=0;i<data.length;i++)power+=data[i]*data[i];
+  return Math.sqrt(power/data.length);
+}
+let micMeterFrame=0,micMeterPeak=0,micMeterLastDraw=0;
+function setMicMeterVisible(){
+  const box=$('#senderMicLevel');if(!box)return;
+  box.hidden=!isPublishing;
+  box.classList.toggle('is-muted',micMuted);
+  const state=$('#senderMicState');if(state)state.textContent=micMuted?'ปิดเสียง':'';
+  if(!isPublishing){micMeterPeak=0;const fill=$('#senderMicFill');if(fill)fill.style.transform='scaleX(0)'}
+}
+function stopMicMeter(){
+  if(micMeterFrame){cancelAnimationFrame(micMeterFrame);micMeterFrame=0}
+  setMicMeterVisible();
+}
+function startMicMeter(){
+  setMicMeterVisible();
+  if(micMeterFrame)return;
+  const frame=now=>{
+    micMeterFrame=0;
+    if(!isPublishing){setMicMeterVisible();return}
+    micMeterFrame=requestAnimationFrame(frame);
+    if(now-micMeterLastDraw<32)return; // cap meter and gate work near 30 fps
+    micMeterLastDraw=now;
+    const p=micProcessor,fill=$('#senderMicFill');
+    if(!fill)return;
+    if(!p||p.fallback||p.context?.state!=='running'||micMuted){
+      micMeterPeak*=.56;fill.style.transform=`scaleX(${micMeterPeak.toFixed(3)})`;
+      return;
+    }
+    if(p.softNoiseEnabled){
+      const inputLevel=micRms(p.inputAnalyser,p.inputData);
+      // Conservative hysteresis + hold avoids choppy first syllables.
+      if(inputLevel>.011)p.lastVoiceMs=now;
+      const shouldClose=inputLevel<.0075 && now-p.lastVoiceMs>350;
+      if(shouldClose!==p.gateIsClosed){
+        p.gateIsClosed=shouldClose;
+        p.gateGain.gain.setTargetAtTime(shouldClose?.16:1,p.context.currentTime,shouldClose?.085:.014);
+      }
+    }
+    const level=micRms(p.outputAnalyser,p.outputData);
+    const db=20*Math.log10(Math.max(.0001,level));
+    const normalized=Math.max(0,Math.min(1,(db+60)/48));
+    micMeterPeak=normalized>micMeterPeak?normalized:micMeterPeak*.76+normalized*.24;
+    fill.style.transform=`scaleX(${micMeterPeak.toFixed(3)})`;
+  };
+  micMeterFrame=requestAnimationFrame(frame);
 }
 async function listMicrophones({requestPermission=false}={}){
   const md=navigator.mediaDevices;
@@ -422,7 +489,8 @@ async function selectMicrophone(deviceId=''){
       explicitMicDeviceId=deviceId;
       if(oldStream&&oldStream!==newStream)oldStream.getTracks().forEach(t=>t.stop());
       closeMicProcessor(oldProcessor);
-      updateMicUi();updateMicGainUi();updateMicNoiseUi();
+      updateMicNoiseProcessing();updateMicUi();updateMicGainUi();updateMicNoiseUi();
+      if(isPublishing)startMicMeter();
       log(`ไมโครโฟนพร้อม: ${micName(rawTrack)} / Gain ${micGainPercent}% / Noise ${micNoiseSuppressionEnabled?'ON':'OFF'}${micMuted?' (MUTED)':''}`);
       await listMicrophones();
       if(isPublishing)setTimeout(sendTelemetry,50);
@@ -439,35 +507,33 @@ async function selectMicrophone(deviceId=''){
   try{return await change}finally{if(micSwitchPromise===change)micSwitchPromise=null}
 }
 async function setMicNoiseSuppression(enabled){
-  if(!noiseSupported()){
-    updateMicNoiseUi('เบราว์เซอร์นี้ไม่รองรับการลดเสียงรบกวน');return;
-  }
   const previous=micNoiseSuppressionEnabled;
   micNoiseSuppressionEnabled=!!enabled;
   const toggle=$('#micNoiseToggle');if(toggle)toggle.disabled=true;
   try{
     if(micSwitchPromise)await micSwitchPromise;
     const track=activeMicTrack();
-    if(track?.readyState==='live'){
-      // Prefer a live constraint change without replacing the WebRTC track.
-      let applied=false;
-      if(track.applyConstraints){
-        try{
-          await track.applyConstraints({noiseSuppression:micNoiseSuppressionEnabled});
-          applied=track.getSettings?.().noiseSuppression===micNoiseSuppressionEnabled;
-        }catch(e){log(`Noise applyConstraints fallback: ${e.message}`)}
+    if(track?.readyState==='live'&&track.applyConstraints){
+      try{
+        // Ask Firefox to enable its native noise reduction first.
+        await track.applyConstraints({noiseSuppression:micNoiseSuppressionEnabled});
+      }catch(e){
+        log(`Native noise request skipped: ${e.message}`);
+        // Software noise gate still works while retaining the outgoing track.
       }
-      // Some browsers only take noiseSuppression when opening a new capture.
-      if(!applied)await selectMicrophone(explicitMicDeviceId);
     }
+    // No 'not supported' dead-end: when native DSP isn't confirmed,
+    // turn on the local Web Audio noise gate instead.
+    updateMicNoiseProcessing();
     localStorage.setItem(MIC_NOISE_KEY,micNoiseSuppressionEnabled?'1':'0');
     updateMicNoiseUi();
-    log(`Noise suppression requested: ${micNoiseSuppressionEnabled?'ON':'OFF'}`);
+    log(`Noise reduction ${micNoiseSuppressionEnabled?'ON':'OFF'} / ${nativeMicNoiseState()===true?'native':'noise gate / unknown'}`);
   }catch(e){
     micNoiseSuppressionEnabled=previous;
-    updateMicNoiseUi(`เปลี่ยนลดเสียงรบกวนไม่สำเร็จ: ${e.message}`);
-    log(`Noise suppression error: ${e.message}`);
-  }finally{if(toggle)toggle.disabled=!noiseSupported()}
+    updateMicNoiseProcessing();
+    updateMicNoiseUi('ตั้งค่าเสียงไม่สำเร็จ');
+    log(`Noise toggle error: ${e.message}`);
+  }finally{if(toggle)toggle.disabled=false}
 }
 async function ensureMic(){
   if(micSwitchPromise)await micSwitchPromise;
@@ -851,7 +917,7 @@ async function startPublishing(){
   if(!room||!streamID)throw new Error('กรุณาระบุ Room และ Stream ID');
   vdo=new VDONinjaSDK({autoRecover:true,autoRelay:true,salt:'vdo.ninja'});
   vdo.addEventListener('connected',()=>{$('#statRtc').textContent='signaling connected';log('เชื่อม signaling แล้ว')});
-  vdo.addEventListener('publishing',()=>{isPublishing=true;$('#liveBadge').textContent='LIVE';updateSimpleStatus();$('#liveBadge').classList.add('ok');$('#statRtc').textContent='PUBLISHING';log('เริ่มส่ง WebRTC แล้ว');startTelemetry();requestWakeLock()});
+  vdo.addEventListener('publishing',()=>{isPublishing=true;$('#liveBadge').textContent='LIVE';updateSimpleStatus();$('#liveBadge').classList.add('ok');$('#statRtc').textContent='PUBLISHING';log('เริ่มส่ง WebRTC แล้ว');startTelemetry();startMicMeter();requestWakeLock()});
   vdo.addEventListener('peerConnected',e=>{const id=e.detail?.uuid;if(id){peerIds.add(id);updatePeerCount();log(`Viewer connected (${peerIds.size})`);setTimeout(sendTelemetry,250)}});
   vdo.addEventListener('peerDisconnected',e=>{const id=e.detail?.uuid;if(id){peerIds.delete(id);updatePeerCount();log(`Viewer disconnected (${peerIds.size})`)}});
   vdo.addEventListener('connectionRecovered',()=>log('WebRTC recovered'));
@@ -860,7 +926,7 @@ async function startPublishing(){
   await vdo.connect();await vdo.joinRoom({room});await vdo.publish(stream,{room,streamID,label:publisherLabel()});
   isPublishing=true;$('#liveBadge').textContent='LIVE';updateSimpleStatus();$('#liveBadge').classList.add('ok');$('#statRtc').textContent='PUBLISHING';
   startMessageChannel().catch(e=>log(`ช่องข้อความเริ่มไม่สำเร็จ: ${e.message}`));
-  startTelemetry();requestWakeLock();
+  startTelemetry();startMicMeter();requestWakeLock();
 }
 
 
@@ -907,7 +973,7 @@ async function stopAll(){
   try{if(messageVdo){await messageVdo.stopViewing?.(controlDataStreamId($('#room').value.trim()));await messageVdo.disconnect?.()}}catch{}
   messageVdo=null;messageReady=false;messageViewPending=false;
   try{if(vdo){await vdo.stopPublishing?.();await vdo.disconnect?.()}}catch{}
-  isPublishing=false;peerIds.clear();updatePeerCount();
+  isPublishing=false;stopMicMeter();peerIds.clear();updatePeerCount();
   if(telemetryTimer){clearInterval(telemetryTimer);telemetryTimer=null}
   if(zoomState.timer){clearInterval(zoomState.timer);zoomState.timer=null}
   zoomState.drive=0;zoomState.velocity=0;zoomState.coasting=false;zoomState.virtual=zoomState.current;
@@ -1004,9 +1070,9 @@ document.addEventListener('visibilitychange',()=>{
   }
 });
 window.addEventListener('beforeunload',()=>stopAll());
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=01128').catch(()=>{});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=01129').catch(()=>{});
 $('#statHint').textContent=q().hint;
 $('#statSmartProfile').textContent=smartProfile;
 initIdentity();updateSimpleStatus();updateMicUi();updateMicGainUi();updateMicNoiseUi();
 $('#newStreamId').onclick=generateNewStreamId;
-log(`v0.11.28 พร้อมใช้งาน — Mic Volume & Noise Reduction / Control Data Hub — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
+log(`v0.11.29 พร้อมใช้งาน — Mic Volume & Noise Reduction / Control Data Hub — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
