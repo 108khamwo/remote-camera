@@ -1,0 +1,10 @@
+Remote Camera v0.11.36 — LANDSCAPE COMPACT / iOS 30 FPS
+
+- Fix landscape Sender display: preview remains full-screen and controls stay properly positioned after rotation.
+- 720p/1080p controls are compact 32px buttons in portrait, 30px chips overlay in landscape.
+- In landscape, quality switch is located above LIVE button; the live status and MIC meter are moved apart.
+- iOS Sender settings show 30 FPS (and optional 24 FPS detail) instead of 60 FPS modes. Existing saved iOS 60 FPS preset is migrated to the matching 30 FPS mode.
+- Non-iOS devices retain 60 FPS in advanced settings. Both quick buttons always select 30 FPS.
+- Video bitrate/network, permanent links, audio, stream signaling and Receiver behavior are unchanged.
+
+Deployment: upload the CONTENTS of this ZIP's folder to the existing GitHub Pages repository, replacing matching files. Close/reopen Sender and Control, or force refresh. Validate on the target iPhone/iOS browser; runtime hardware capture quality cannot be verified from a static code test.

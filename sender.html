@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="mobile-web-app-capable" content="yes">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=01135">
+  <link rel="stylesheet" href="styles.css?v=01136">
   <title>ผู้ส่ง | ระบบ Live Streaming ระยะไกลผ่านมือถือ</title>
 </head>
 <body class="sender-call-body">
@@ -65,14 +65,13 @@
     </div>
   </section>
 
-  <section class="sender-quick-quality" aria-label="ปรับคุณภาพภาพจากมือถือ">
-    <div class="sender-quick-quality-head">
-      <span>คุณภาพภาพ</span><span id="senderQualityActual" role="status" aria-live="polite">รอเปิดกล้อง</span>
+  <section class="sender-quick-quality" aria-label="ความละเอียดภาพจากมือถือ">
+    <span class="sender-quality-label">ภาพ</span>
+    <div class="sender-quick-quality-buttons" role="group" aria-label="เลือกความละเอียดภาพ">
+      <button id="senderQuality1080" type="button" class="sender-quality-button" aria-pressed="true">1080p</button>
+      <button id="senderQuality720" type="button" class="sender-quality-button" aria-pressed="false">720p</button>
     </div>
-    <div class="sender-quick-quality-buttons">
-      <button id="senderQuality1080" type="button" class="sender-quality-button" aria-pressed="true"><strong>1080p</strong><small>คมชัด</small></button>
-      <button id="senderQuality720" type="button" class="sender-quality-button" aria-pressed="false"><strong>720p</strong><small>ลื่นขึ้น</small></button>
-    </div>
+    <span id="senderQualityActual" role="status" aria-live="polite">รอเปิดกล้อง</span>
   </section>
 
   <section class="sender-call-controls">
@@ -232,6 +231,6 @@
     <div id="screenRestHint" class="sender-rest-hint">พักหน้าจอแล้ว<br><small>ภาพและเสียงยังส่งตามปกติ • แตะเพื่อกลับ</small></div>
   </div>
 </main>
-<script src="sdk-loader.js?v=01135"></script><script src="sender.js?v=01135"></script><script src="fullscreen.js?v=01135"></script>
+<script src="sdk-loader.js?v=01136"></script><script src="sender.js?v=01136"></script><script src="fullscreen.js?v=01136"></script>
 </body>
 </html>

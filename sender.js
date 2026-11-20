@@ -1,4 +1,4 @@
-/* Remote Camera v0.11.35 — sender quality command ACK + receiver stats fixes */
+/* Remote Camera v0.11.36 — compact landscape sender + iOS 30fps */
 const $=s=>document.querySelector(s); const logEl=$('#log');
 function log(m){const t=new Date().toLocaleTimeString();logEl.textContent+=`[${t}] ${m}\n`;logEl.scrollTop=logEl.scrollHeight}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -103,9 +103,18 @@ function initIdentity(){
   $('#room').value=systemRoom();
   $('#streamId').value=id;
   // On any link (including permanent ones), only the local sender owns quality.
+  // The iOS browser capture API does not reliably deliver 60 FPS for live
+  // WebRTC. Keep stable 30 FPS choices on iOS, without removing Android options.
+  const qualityMenu=$('#quality');
+  if(IS_IOS){
+    qualityMenu.querySelectorAll('option[value="1080_60"],option[value="720_60"]').forEach(opt=>opt.remove());
+  }
   const savedPreset=localStorage.getItem(FIXED_PRESET_KEY||LOCAL_PRESET_KEY)||'';
-  if(PRESETS[savedPreset])$('#quality').value=savedPreset;
-  committedPresetKey=$('#quality').value;
+  const allowedPreset=IS_IOS&&savedPreset.endsWith('_60')?
+    (savedPreset.startsWith('720_')?'720_30':'1080_30'):savedPreset;
+  if(PRESETS[allowedPreset])qualityMenu.value=allowedPreset;
+  committedPresetKey=qualityMenu.value;
+  if(IS_IOS&&savedPreset!==committedPresetKey)saveSenderPreset(committedPresetKey);
   updateSenderQualityUi();
   if($('#roomView'))$('#roomView').value=systemRoom();
   if($('#streamIdView'))$('#streamIdView').value=id;
@@ -885,7 +894,7 @@ function updateSenderQualityUi(message=''){
   }
 }
 async function selectSenderQuality(value){
-  if(!PRESETS[value]||qualitySwitchBusy)return;
+  if(!PRESETS[value]||qualitySwitchBusy||(IS_IOS&&value.endsWith('_60')))return;
   const before=committedPresetKey;
   qualitySwitchBusy=true;
   updateSenderQualityUi(`กำลังปรับ ${PRESETS[value].label}…`);
@@ -1263,7 +1272,7 @@ document.addEventListener('visibilitychange',()=>{
   }
 });
 window.addEventListener('beforeunload',()=>stopAll());
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=01135').catch(()=>{});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=01136').catch(()=>{});
 $('#statHint').textContent=q().hint;
 $('#statSmartProfile').textContent=smartProfile;
 initIdentity();updateSimpleStatus();updateMicUi();updateMicGainUi();updateMicNoiseUi();
