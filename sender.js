@@ -1,9 +1,11 @@
-/* Remote Camera v0.11.41 — AUDIO FIRST / stable direct mic / worklet gate */
+/* Remote Camera v0.11.44 — Verified microphone routing and safe mobile capture switch */
 const $=s=>document.querySelector(s); const logEl=$('#log');
 function log(m){const t=new Date().toLocaleTimeString();logEl.textContent+=`[${t}] ${m}\n`;if(logEl.textContent.length>18000)logEl.textContent=logEl.textContent.slice(-12000);logEl.scrollTop=logEl.scrollHeight}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 let cameraStream=null,audioStream=null,outStream=null,vdo=null,messageVdo=null,messageReady=false,messageViewPending=false,messageRetryTimer=null,currentFacing='environment',isPublishing=false,lastRemoteTs=0;
-let micMuted=false,explicitMicDeviceId='',micSwitchPromise=null;
+const MIC_DEVICE_PREF_KEY='remoteCamMicSelectedDeviceV2';
+const MIC_LABEL_PREF_KEY='remoteCamMicSelectedLabelV2';
+let micMuted=false,explicitMicDeviceId=localStorage.getItem(MIC_DEVICE_PREF_KEY)||'',preferredMicLabel=localStorage.getItem(MIC_LABEL_PREF_KEY)||'',micSwitchPromise=null;
 const MIC_GAIN_KEY='remoteCamMicGainV1',MIC_NOISE_KEY='remoteCamMicNoiseV1';
 const savedMicGain=localStorage.getItem(MIC_GAIN_KEY);
 let micGainPercent=savedMicGain===null?100:Math.max(0,Math.min(200,Number(savedMicGain)||0));
@@ -564,6 +566,10 @@ async function checkMicHealth(){
   micHealthRunning=true;
   try{
     const raw=activeMicTrack(),p=micProcessor,now=Date.now();
+    if(raw?.readyState==='live'&&explicitMicDeviceId&&!micSelectionCheck(explicitMicDeviceId,raw).ok){
+      micStatus('แหล่งเสียงไม่ตรงกับไมค์ที่เลือก • เปิดตั้งค่าเลือกใหม่');
+      const stageStatus=$('#senderMicState');if(stageStatus)stageStatus.textContent='ตรวจไมค์';
+    }
     if(!raw||raw.readyState==='ended'){
       const stageStatus=$('#senderMicState');if(stageStatus)stageStatus.textContent='ไมค์หลุด';
       if(now-lastMicRecoveryAt<MIC_RECOVERY_COOLDOWN_MS)return;
@@ -571,8 +577,9 @@ async function checkMicHealth(){
       log('Mic track ended: reconnecting microphone without restarting camera');
       try{await selectMicrophone(explicitMicDeviceId)}
       catch(e){
-        if(explicitMicDeviceId){try{await selectMicrophone('')}catch(err){micStatus(`ไมค์หลุด • เปิดตั้งค่าเพื่อเลือกใหม่: ${err.message}`)}}
-        else micStatus(`ไมค์หลุด • เปิดตั้งค่าเพื่อเลือกใหม่: ${e.message}`);
+        // Do not silently substitute the phone microphone for a chosen external input.
+        micStatus(explicitMicDeviceId?'ไมค์ที่เลือกหลุด • ต่อใหม่หรือเปิดตั้งค่าเลือกอัตโนมัติ':`ไมค์หลุด • เปิดตั้งค่า: ${e.message}`);
+        log(`Mic recovery failed; external selection preserved: ${e.message}`);
       }
       return;
     }
@@ -605,20 +612,42 @@ function stopMicHealth(){
   if(micHealthTimer)clearInterval(micHealthTimer);
   micHealthTimer=null;micForceDirect=false;
 }
+// Selecting a named device is a request, not proof that iOS/Android actually
+// routed the physical input. getSettings().deviceId is the strongest browser-
+// exposed check; even that cannot certify the physical audio path on every OS.
+function micSelectionCheck(requestedId,track){
+  const actualId=track?.getSettings?.()?.deviceId||'';
+  if(!requestedId)return {ok:true,verified:!!actualId,actualId};
+  if(actualId&&actualId!==requestedId)return {ok:false,verified:true,actualId};
+  return {ok:true,verified:!!actualId,actualId};
+}
+function rememberMicrophoneSelection(deviceId,track){
+  explicitMicDeviceId=deviceId||'';
+  preferredMicLabel=deviceId?(track?.label?.trim()||preferredMicLabel):'';
+  try{
+    if(deviceId)localStorage.setItem(MIC_DEVICE_PREF_KEY,deviceId);else localStorage.removeItem(MIC_DEVICE_PREF_KEY);
+    if(preferredMicLabel)localStorage.setItem(MIC_LABEL_PREF_KEY,preferredMicLabel);else localStorage.removeItem(MIC_LABEL_PREF_KEY);
+  }catch{}
+}
+function micSelectionStatus(track,deviceId,{verified=false,changed=false}={}){
+  const name=micName(track),live=track?.readyState==='live';
+  if(!live)return 'ไมค์ไม่พร้อม';
+  if(!deviceId)return `ไมค์อัตโนมัติ: ${name}${micMuted?' (ปิดเสียง)':''}`;
+  if(!verified)return `เลือก ${name} • เบราว์เซอร์ไม่ยืนยันอุปกรณ์ ตรวจเสียงจริง`;
+  return `${changed?'เปลี่ยนแล้ว':'กำลังใช้'}: ${name}${micMuted?' (ปิดเสียง)':''}`;
+}
 async function listMicrophones({requestPermission=false}={}){
   const md=navigator.mediaDevices;
   if(!md?.enumerateDevices){micStatus('เบราว์เซอร์นี้ไม่รองรับการแสดงรายชื่อไมค์');return}
   let temporary=null;
   try{
-    if(requestPermission && activeMicTrack()?.readyState!=='live'){
-      temporary=await md.getUserMedia({audio:true,video:false});
-    }
+    if(requestPermission && activeMicTrack()?.readyState!=='live')temporary=await md.getUserMedia({audio:true,video:false});
     const devices=await md.enumerateDevices();
     const mics=devices.filter(d=>d.kind==='audioinput');
     const sel=$('#micDeviceSelect');
     const wanted=sel.value||explicitMicDeviceId;
     const active=activeMicTrack();
-    const activeId=active?.getSettings?.().deviceId||'';
+    const activeId=active?.getSettings?.()?.deviceId||'';
     sel.replaceChildren();
     const auto=document.createElement('option');auto.value='';auto.textContent='อัตโนมัติ / ไมค์ที่ระบบเลือก';sel.appendChild(auto);
     mics.forEach((d,i)=>{
@@ -626,59 +655,118 @@ async function listMicrophones({requestPermission=false}={}){
       option.textContent=`${i+1}. ${d.label||`ไมโครโฟน ${i+1}`}${d.deviceId&&d.deviceId===activeId?' • กำลังใช้':''}`;
       sel.appendChild(option);
     });
-    sel.value=mics.some(d=>d.deviceId && d.deviceId===wanted)?wanted:'';
-    if(active?.readyState==='live')micStatus(`กำลังใช้: ${micName(active)}${micMuted?' (ปิดเสียงอยู่)':''} | พบ ${mics.length} รายการ`);
-    else micStatus(mics.length?`พบ ${mics.length} รายการ • เลือกแล้วกด “ใช้ไมค์ที่เลือก”`:'ไม่พบไมโครโฟน ตรวจสอบสิทธิ์และการเชื่อมต่อ');
+    const chosen=mics.find(d=>d.deviceId&&d.deviceId===wanted) ||
+      (preferredMicLabel&&mics.filter(d=>d.deviceId&&d.label===preferredMicLabel).length===1 ?
+        mics.find(d=>d.deviceId&&d.label===preferredMicLabel):null);
+    // Device IDs can rotate after iOS/browser permission changes. Match a
+    // previously chosen device by unique label rather than quietly using Auto.
+    if(chosen&&explicitMicDeviceId&&explicitMicDeviceId!==chosen.deviceId&&wanted===explicitMicDeviceId){
+      explicitMicDeviceId=chosen.deviceId;
+      try{localStorage.setItem(MIC_DEVICE_PREF_KEY,chosen.deviceId)}catch{}
+    }
+    sel.value=chosen?.deviceId||'';
+    if(active?.readyState==='live'){
+      const check=micSelectionCheck(explicitMicDeviceId,active);
+      if(!check.ok)micStatus(`ไมค์ไม่ตรงที่เลือก • ตอนนี้: ${micName(active)} • เลือกใหม่อีกครั้ง`);
+      else micStatus(micSelectionStatus(active,explicitMicDeviceId,{verified:check.verified}));
+    }else if(explicitMicDeviceId&&!chosen){
+      micStatus('ไม่พบไมค์ที่เลือกไว้ • ต่อไมค์แล้วกดค้นหา หรือเลือกอัตโนมัติ');
+    }else micStatus(mics.length?`พบไมค์ ${mics.length} รายการ • เลือกแล้วกดใช้ไมค์`:'ไม่พบไมโครโฟน');
     return mics;
   }catch(e){
-    micStatus(`ค้นหาไมค์ไม่สำเร็จ: ${e.name||'Error'} — ${e.message}`);
-    log(`Mic list error: ${e.name||''} ${e.message}`);
+    micStatus(`ค้นหาไมค์ไม่สำเร็จ: ${e.message}`);log(`Mic list error: ${e.name||''} ${e.message}`);
   }finally{temporary?.getTracks?.().forEach(t=>t.stop())}
 }
+async function verifiedMicCapture(deviceId){
+  const stream=await navigator.mediaDevices.getUserMedia(micCaptureOptions(deviceId));
+  const track=stream.getAudioTracks()[0];
+  if(!track){stream.getTracks().forEach(t=>t.stop());throw new Error('เบราว์เซอร์ไม่ได้ส่ง Audio Track กลับมา')}
+  const check=micSelectionCheck(deviceId,track);
+  if(!check.ok){
+    stream.getTracks().forEach(t=>t.stop());
+    throw new Error('เบราว์เซอร์เปิดไมค์คนละตัวกับที่เลือก (ตรวจจาก Device ID)');
+  }
+  return {stream,track,check};
+}
 async function selectMicrophone(deviceId=''){
-  // Serialize capture and SDK replaceTrack, retaining the old mic on failure.
+  // Keep one capture source at a time when replacing a *different* microphone
+  // on mobile. Opening two audio inputs simultaneously can leave iOS/Firefox
+  // stuck on the built-in mic. Video and signaling are not restarted.
   if(micOutputSyncPromise)try{await micOutputSyncPromise}catch{}
   if(micSwitchPromise)await micSwitchPromise;
   const change=(async()=>{
     const generation=micSessionGeneration;
     const oldStream=audioStream,oldProcessor=micProcessor,oldTrack=micOutgoingTrack();
-    let newStream=null,newProcessor=null;
+    const oldSource=activeMicTrack();
+    const oldDevice=oldSource?.getSettings?.()?.deviceId||explicitMicDeviceId||'';
+    let newStream=null,newProcessor=null,priorCaptureStopped=false,committed=false;
+    const switchingSource=!!oldSource&&oldSource.readyState==='live'&&
+      (deviceId!==explicitMicDeviceId || (deviceId&&oldDevice&&oldDevice!==deviceId));
+    const exclusiveMobile=(IS_IOS||IS_ANDROID)&&switchingSource;
     try{
-      micStatus('กำลังเชื่อมต่อไมโครโฟน…');
-      newStream=await navigator.mediaDevices.getUserMedia(micCaptureOptions(deviceId));
+      micStatus('กำลังเปลี่ยนไมค์…');
+      if(exclusiveMobile){
+        // The old outgoing track object is retained for replaceTrack, but its
+        // capture source is released so the OS can grant the requested input.
+        oldStream.getAudioTracks().forEach(t=>t.stop());
+        priorCaptureStopped=true;
+      }
+      let captured=await verifiedMicCapture(deviceId);
+      newStream=captured.stream;
       if(generation!==micSessionGeneration)throw new Error('ยกเลิกการเปิดไมค์หลังหยุดส่ง');
-      const rawTrack=newStream.getAudioTracks()[0];
-      if(!rawTrack)throw new Error('เบราว์เซอร์ไม่ได้ส่ง Audio Track กลับมา');
-      rawTrack.enabled=!micMuted;
+      captured.track.enabled=!micMuted;
       newProcessor=await createMicProcessor(newStream);
       if(generation!==micSessionGeneration)throw new Error('ยกเลิกการเปิดไมค์หลังหยุดส่ง');
-      const nextTrack=newProcessor.outgoingTrack;
+      const nextTrack=newProcessor?.outgoingTrack;
       if(!nextTrack)throw new Error('ไม่มี Audio Track สำหรับส่งไลฟ์');
       nextTrack.enabled=!micMuted;
-      if(isPublishing&&vdo&&oldTrack){
-        await vdo.replaceTrack(oldTrack,nextTrack);
-      }
+      if(isPublishing&&vdo&&oldTrack)await vdo.replaceTrack(oldTrack,nextTrack);
       if(generation!==micSessionGeneration)throw new Error('ยกเลิกการเปิดไมค์หลังหยุดส่ง');
       if(outStream){
         if(oldTrack)outStream.removeTrack(oldTrack);
         if(!outStream.getAudioTracks().includes(nextTrack))outStream.addTrack(nextTrack);
       }
-      audioStream=newStream;
-      micProcessor=newProcessor;
-      explicitMicDeviceId=deviceId;
+      audioStream=newStream;micProcessor=newProcessor;
+      rememberMicrophoneSelection(deviceId,captured.track);
+      const selectedMic=$('#micDeviceSelect');if(selectedMic)selectedMic.value=deviceId||'';
+      committed=true;
       if(oldStream&&oldStream!==newStream)oldStream.getTracks().forEach(t=>t.stop());
       closeMicProcessor(oldProcessor);
       micForceDirect=false;
       updateMicNoiseProcessing();updateMicUi();updateMicGainUi();updateMicNoiseUi();
       if(isPublishing)startMicMeter();
-      log(`ไมโครโฟนพร้อม: ${micName(rawTrack)} / Gain ${micGainPercent}% / Noise ${micNoiseSuppressionEnabled?'ON':'OFF'}${micMuted?' (MUTED)':''}`);
       await listMicrophones();
+      const verified=captured.check.verified;
+      micStatus(micSelectionStatus(captured.track,deviceId,{verified,changed:true}));
+      log(`Mic switched: ${micName(captured.track)} / requested ${deviceId||'auto'} / actual ${captured.check.actualId||'unknown'} / outgoing ${nextTrack.id}`);
       if(isPublishing)setTimeout(sendTelemetry,50);
-      return rawTrack;
+      return captured.track;
     }catch(e){
-      closeMicProcessor(newProcessor);
-      if(newStream)newStream.getTracks().forEach(t=>t.stop());
-      micStatus(`เลือกไมค์ไม่สำเร็จ: ${e.message} • ลองหยุดส่งภาพแล้วเลือกใหม่`);
+      if(!committed){
+        closeMicProcessor(newProcessor);
+        if(newStream)newStream.getTracks().forEach(t=>t.stop());
+      }
+      if(priorCaptureStopped&&generation===micSessionGeneration){
+        // Recover previous selected input after a failed exclusive change.
+        // Never silently declare the newly requested mic active.
+        try{
+          const recovered=await verifiedMicCapture(oldDevice);
+          const restored=await createMicProcessor(recovered.stream);
+          const fallbackTrack=restored.outgoingTrack;
+          fallbackTrack.enabled=!micMuted;
+          if(isPublishing&&vdo&&oldTrack)await vdo.replaceTrack(oldTrack,fallbackTrack);
+          if(outStream){if(oldTrack)outStream.removeTrack(oldTrack);outStream.addTrack(fallbackTrack)}
+          audioStream=recovered.stream;micProcessor=restored;
+          closeMicProcessor(oldProcessor);
+          updateMicUi();updateMicGainUi();updateMicNoiseUi();
+          log(`Restored previous mic: ${micName(recovered.track)}`);
+        }catch(restoreError){
+          log(`Could not restore previous mic: ${restoreError.message}`);
+          micStatus('เปลี่ยนไมค์ไม่สำเร็จและเสียงเดิมอาจหลุด • หยุดส่งแล้วเริ่มใหม่');
+          throw e;
+        }
+      }
+      micStatus(`เปลี่ยนไมค์ไม่สำเร็จ: ${e.message} • ยังไม่ใช้ไมค์ที่เลือก`);
       log(`Mic switch error: ${e.name||''} ${e.message}`);
       throw e;
     }
@@ -1409,6 +1497,7 @@ $('#micToggleBtn').onclick=()=>setMicMuted(!micMuted);
 $('#micGainRange').addEventListener('input',e=>setMicGain(e.target.value));
 $('#micGainResetBtn').onclick=()=>setMicGain(100);
 $('#micNoiseToggle').addEventListener('change',e=>setMicNoiseSuppression(e.target.checked));
+$('#micDeviceSelect').addEventListener('change',()=>micStatus('เลือกแล้ว • กดใช้ไมค์ที่เลือกเพื่อเปลี่ยนเสียงจริง'));
 $('#refreshMicBtn').onclick=async()=>{
   const btn=$('#refreshMicBtn');btn.disabled=true;
   try{await listMicrophones({requestPermission:true})}finally{btn.disabled=false}
@@ -1450,4 +1539,4 @@ $('#statHint').textContent=q().hint;
 $('#statSmartProfile').textContent=smartProfile;
 initIdentity();updateSimpleStatus();updateMicUi();updateMicGainUi();updateMicNoiseUi();
 $('#newStreamId').onclick=generateNewStreamId;
-log(`v0.11.41 AUDIO FIRST พร้อมใช้งาน — Sender quick quality presets / Mic Volume & Noise Reduction / Control Data Hub — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
+log(`v0.11.44 MIC ROUTING FIX พร้อมใช้งาน — Sender quick quality presets / Mic Volume & Noise Reduction / Control Data Hub — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);

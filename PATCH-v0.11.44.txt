@@ -1,0 +1,11 @@
+Remote Camera v0.11.44 – MIC ROUTING FIX
+
+- Verify that requested microphone deviceId matches the capture track getSettings().deviceId when exposed.
+- On mobile microphone changes, release the old audio capture source before acquiring the new one; preserve the video track and the permanent links.
+- Attempt to restore the prior audio input if the new input fails to open or WebRTC track replacement fails.
+- Persist selected microphone device ID and label on the sender device; attempt to recover changed IDs by matching a unique label in the device list.
+- Display a clear error when input does not match; do not claim that an external mic is live merely because it appeared in the menu.
+- Do not quietly fall back to the phone microphone if a specifically selected external mic disconnects.
+- No changes to messaging, camera controls, OBS viewer, or permanent link IDs.
+
+Important: device IDs reported by mobile browsers are not always proof of actual physical routing, especially Safari on iOS. Verify by tapping the external microphone, with the phone microphone away from the speaker, and listening in Control/OBS.
