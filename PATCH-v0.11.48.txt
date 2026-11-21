@@ -1,0 +1,9 @@
+Remote Camera v0.11.48 — AUTO iOS EXTERNAL MIC ROUTE
+
+- User confirmed iOS wireless mic works after tapping 'แก้เส้นทางเสียง' in v0.11.47.
+- Automatically run that same proven audioSession auto -> (100ms) -> play-and-record sequence after LIVE publisher is ready, only when an external mic is identified or the explicit iOS system route is selected.
+- Also apply once after replacing a microphone during LIVE, without replacing video or restarting the WebRTC publisher.
+- Prevent duplicate scheduling and cancel pending refreshes when stopping; no endless retries/polling.
+- Keep the manual 'แก้เส้นทางเสียง' button as a fallback using the same function.
+- All camera, messages, Control Center, QR, permanent links and network code remain unchanged.
+- Real-world success still depends on iOS/WebKit behavior and needs testing on the same iPhone/HOLLYLAND receiver.
