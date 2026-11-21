@@ -1,0 +1,10 @@
+Remote Camera v0.11.52 — SENDER SIGNAL BARS
+
+- Add compact four ascending signal bars adjacent to LIVE on Sender. No new text or panels.
+- Read actual publisher-side WebRTC RTT and remote inbound RTP packet loss every 4 seconds via official SDK getStats (getPeerQuality fallback).
+- Lowest link quality wins across connected receivers; two samples required before changing levels to reduce flicker.
+- Grey = no measurable stats or no viewer; red = critical/offline; orange = weak; yellow = fair; green = good.
+- Does not read or display cell-tower RSSI and does not claim actual 4G/5G strength.
+- Read-only: no changes to Smart Network, video bitrate/resolution, WebRTC media or iOS mic route guard. No messaging changes.
+- Stop polling when LIVE stops and invalidate pending reads to avoid stale updates.
+- Includes cache-busting sender.html references and updated service-worker cache key.

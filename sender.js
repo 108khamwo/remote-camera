@@ -1,4 +1,4 @@
-/* Remote Camera v0.11.50 — optional video shake reduction, preserve iOS MIC ROUTE GUARD */
+/* Remote Camera v0.11.52 — compact Sender WebRTC signal meter (no media changes) */
 const $=s=>document.querySelector(s); const logEl=$('#log');
 function log(m){const t=new Date().toLocaleTimeString();logEl.textContent+=`[${t}] ${m}\n`;if(logEl.textContent.length>18000)logEl.textContent=logEl.textContent.slice(-12000);logEl.scrollTop=logEl.scrollHeight}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -31,84 +31,6 @@ const senderMessages=[];
 const processedMessageIds=new Map();const pendingSenderMessageAcks=new Map();let senderMessageSeq=0;
 function nextSenderMessageId(){senderMessageSeq=(senderMessageSeq+1)%100000;return `smsg_${Date.now().toString(36)}_${senderMessageSeq.toString(36)}`}
 const video=$('#cameraVideo');
-// Stabilization is deliberately opt-in: canvas processing can cost GPU/CPU
-// on older phones. Audio stays on the original mic track, independent of video.
-const STAB_PREF_KEY='remoteCameraLightStabilizationV1';
-let stabilizeWanted=localStorage.getItem(STAB_PREF_KEY)==='1';
-let stabEngine=null,stabBusy=false;
-function updateStabilizeUi(message=''){
-  const toggle=$('#stabilizeToggle'),status=$('#stabilizeStatus');
-  if(toggle){toggle.checked=stabilizeWanted;toggle.disabled=stabBusy}
-  if(status)status.textContent=message||(stabEngine?'เปิด · ลดสั่นเล็กน้อย':stabilizeWanted?'เปิดเมื่อเริ่มส่ง':'ปิด');
-  const stat=$('#statOutput');
-  if(stat&&cameraStream)stat.textContent=stabEngine?'กันสั่นเบา · Canvas 30 FPS':'Direct camera track';
-}
-async function replaceOutgoingVideoTrack(next){
-  const old=outStream?.getVideoTracks?.()[0]||null;
-  if(!next||!outStream||old===next)return;
-  if(isPublishing&&vdo&&old)await vdo.replaceTrack(old,next);
-  if(old)outStream.removeTrack(old);
-  outStream.addTrack(next);
-}
-async function setStabilizationEnabled(wanted,{persist=true,message=''}={}){
-  if(stabBusy)return false;
-  stabBusy=true;updateStabilizeUi('กำลังเปลี่ยน…');
-  try{
-    if(wanted){
-      if(!window.RemoteCameraStabilizer?.create||!HTMLCanvasElement.prototype.captureStream){
-        throw new Error('เบราว์เซอร์นี้ยังใช้กันสั่นผ่าน Canvas ไม่ได้');
-      }
-      stabilizeWanted=true;
-      if(!cameraStream?.getVideoTracks?.()[0]||document.hidden){
-        if(persist)localStorage.setItem(STAB_PREF_KEY,'1');
-        updateStabilizeUi('จะเปิดเมื่อเริ่มส่ง');
-        return true;
-      }
-      if(!stabEngine){
-        const canvas=$('#stabilizedCanvas');
-        const engine=window.RemoteCameraStabilizer.create(video,canvas,{
-          fps:30,
-          onFailure:e=>{
-            if(stabEngine!==engine)return;
-            log(`กันสั่นหยุด: ${e.message}`);
-            setStabilizationEnabled(false,{persist:true,message:'ปิดอัตโนมัติ · เครื่องทำงานหนัก'}).catch(()=>{});
-          }
-        });
-        try{
-          const output=await engine.ready;
-          await replaceOutgoingVideoTrack(output);
-          stabEngine=engine;
-          canvas.hidden=false;
-          log('กันสั่นเบา: เปิดแล้ว (Canvas track); ไมค์ HOLLYLAND ไม่ถูกเปลี่ยน');
-        }catch(e){engine.stop();throw e}
-      }
-      if(persist)localStorage.setItem(STAB_PREF_KEY,'1');
-      updateStabilizeUi('เปิด · กันสั่นเบา');
-    }else{
-      stabilizeWanted=false;
-      if(stabEngine){
-        await replaceOutgoingVideoTrack(cameraStream?.getVideoTracks?.()[0]);
-        stabEngine.stop();stabEngine=null;
-        $('#stabilizedCanvas').hidden=true;
-        log('กันสั่นเบา: ปิด กลับเป็น Camera Track เดิม');
-      }
-      if(persist)localStorage.setItem(STAB_PREF_KEY,'0');
-      updateStabilizeUi(message||'ปิด');
-    }
-    sendTelemetry();return true;
-  }catch(e){
-    log(`กันสั่น: ${e.message}`);
-    if(wanted){stabilizeWanted=false;localStorage.setItem(STAB_PREF_KEY,'0')}
-    // Keep the error visible instead of overwriting it in finally.
-    stabBusy=false;
-    updateStabilizeUi(`กันสั่นใช้งานไม่ได้: ${e.message}`);
-    return false;
-  }finally{
-    stabBusy=false;
-    const toggle=$('#stabilizeToggle');if(toggle)toggle.disabled=false;
-  }
-}
-
 function updateMicUi(){
   const btn=$('#micToggleBtn'),slash=$('#micMuteSlash');
   if(btn){
@@ -1510,17 +1432,9 @@ async function openCamera({facing=currentFacing,deviceId=''}={}){
 
     if(isPublishing&&vdo&&oldTrack){
       try{
-        const currentOutput=outStream?.getVideoTracks?.()[0]||oldTrack;
-        if(stabEngine?.track===currentOutput){
-          // Stabilizer's canvas track remains the publisher; merely swap the
-          // camera feeding the same canvas. NEVER replace the mic track.
-          stabEngine.resetTracking();
-          log('✓ เปลี่ยนแหล่งกล้องเข้า Canvas กันสั่น (WebRTC เดิม)');
-        }else{
-          await vdo.replaceTrack(currentOutput,nextTrack);
-          if(outStream){try{outStream.removeTrack(currentOutput)}catch{};if(!outStream.getVideoTracks().includes(nextTrack))outStream.addTrack(nextTrack)}
-          log('✓ replaceTrack สำเร็จ — WebRTC connection เดิมยังอยู่');
-        }
+        await vdo.replaceTrack(oldTrack,nextTrack);
+        if(outStream){try{outStream.removeTrack(oldTrack)}catch{};if(!outStream.getVideoTracks().includes(nextTrack))outStream.addTrack(nextTrack)}
+        log('✓ replaceTrack สำเร็จ — WebRTC connection เดิมยังอยู่');
       }catch(e){
         nextStream.getTracks().forEach(t=>t.stop());
         throw new Error(`สลับ WebRTC track ไม่สำเร็จ: ${e.message}`);
@@ -1635,14 +1549,109 @@ async function buildOutStream(){
   await ensureMic();
   const vt=cameraStream.getVideoTracks()[0];
   try{vt.contentHint=q().hint}catch{}
-  if(stabilizeWanted&&!stabEngine)await setStabilizationEnabled(true,{persist:false});
-  const outputTrack=stabEngine?.track?.readyState==='live'?stabEngine.track:vt;
-  outStream=new MediaStream([outputTrack,micOutgoingTrack()]);
+  outStream=new MediaStream([vt,micOutgoingTrack()]);
   const s=vt.getSettings();
-  log(`Output ${outputTrack===vt?'Camera Track ตรง':'กันสั่นเบา Canvas'} ${s.width||'?'}×${s.height||'?'} @${Math.round(s.frameRate||0)||'?'} / hint=${q().hint}`);
-  updateStabilizeUi();
+  log(`Output ใช้ Camera Track โดยตรง ${s.width||'?'}×${s.height||'?'} @${Math.round(s.frameRate||0)||'?'} / hint=${q().hint}`);
   return outStream;
 }
+
+// v0.11.52: read-only link strength from publisher WebRTC stats.
+// Never guess from Wi-Fi/4G/5G bars or navigator.onLine === true.
+let senderSignalTimer=null,senderSignalBusy=false,senderSignalEpoch=0;
+let senderSignalShown='waiting',senderSignalCandidate=null,senderSignalCandidateCount=0;
+const SENDER_SIGNAL_POLL_MS=4000;
+function setSenderNetworkSignal(level,detail=''){
+  const el=$('#senderNetworkSignal');if(!el)return;
+  const names={'waiting':'ยังไม่มีข้อมูลสัญญาณ','0':'การเชื่อมต่อมีปัญหา','1':'สัญญาณอ่อน','2':'สัญญาณพอใช้','3':'สัญญาณดี','4':'สัญญาณดีมาก'};
+  const k=String(level);
+  el.dataset.level=k;
+  const label=names[k]||names.waiting;
+  el.setAttribute('aria-label',`สัญญาณส่งภาพ: ${label}`);
+  el.title=detail?`${label} • ${detail}`:label;
+}
+function senderSignalLevel(rttMs,lossRatio){
+  const r=Number.isFinite(rttMs)&&rttMs>=0?rttMs:null;
+  const l=Number.isFinite(lossRatio)&&lossRatio>=0?lossRatio:null;
+  if(r===null&&l===null)return null;
+  if((r!==null&&r>=800)||(l!==null&&l>=.07))return 0;
+  if((r!==null&&r>=450)||(l!==null&&l>=.03))return 1;
+  if((r!==null&&r>=250)||(l!==null&&l>=.01))return 2;
+  if((r!==null&&r>=150)||(l!==null&&l>=.003))return 3;
+  // RTT alone cannot prove low loss. Show at most 3 bars without loss stats.
+  return l===null?3:4;
+}
+function senderPeerStatsQuality(stats){
+  if(!Array.isArray(stats))return null;
+  const pub=stats.filter(x=>x&&x.connectionType==='publisher');
+  const active=pub.filter(x=>x.type==='candidate-pair'&&(x.state==='succeeded'||x.selected));
+  const pair=active.find(x=>x.nominated)||active.find(x=>x.selected)||active[0];
+  const rttCandidates=[];
+  if(pair&&typeof pair.currentRoundTripTime==='number' && Number.isFinite(pair.currentRoundTripTime))rttCandidates.push(Number(pair.currentRoundTripTime)*1000);
+  const remote=pub.filter(x=>x.type==='remote-inbound-rtp');
+  const lossCandidates=[];
+  for(const x of remote){
+    if(typeof x.roundTripTime==='number'&&Number.isFinite(x.roundTripTime)&&x.roundTripTime>=0)rttCandidates.push(Number(x.roundTripTime)*1000);
+    if(typeof x.fractionLost==='number'&&Number.isFinite(x.fractionLost)&&x.fractionLost>=0)lossCandidates.push(Number(x.fractionLost));
+  }
+  return {rttMs:rttCandidates.length?Math.max(...rttCandidates):null,
+          lossRatio:lossCandidates.length?Math.max(...lossCandidates):null};
+}
+async function measureSenderNetworkSignal(){
+  if(!isPublishing||senderSignalBusy)return;
+  if(navigator.onLine===false){setSenderNetworkSignal(0,'อุปกรณ์รายงานว่าออฟไลน์');return}
+  const peers=[...peerIds];
+  if(!peers.length){senderSignalShown='waiting';senderSignalCandidate=null;senderSignalCandidateCount=0;setSenderNetworkSignal('waiting','รออุปกรณ์รับภาพ');return}
+  if(!vdo || (typeof vdo.getStats!=='function'&&typeof vdo.getPeerQuality!=='function')){
+    setSenderNetworkSignal('waiting','เบราว์เซอร์ยังไม่ส่งสถิติเครือข่าย');return;
+  }
+  senderSignalBusy=true;const epoch=senderSignalEpoch;
+  try{
+    const readings=await Promise.all(peers.map(async uuid=>{
+      let value=null;
+      try{
+        if(typeof vdo.getStats==='function'){
+          const reports=await vdo.getStats(uuid);
+          value=senderPeerStatsQuality(reports?.[uuid]);
+        }
+        if((value?.rttMs==null&&value?.lossRatio==null)&&typeof vdo.getPeerQuality==='function'){
+          const q=await vdo.getPeerQuality(uuid);
+          if(q)value={rttMs:Number.isFinite(q.rttMs)?q.rttMs:null,
+                      lossRatio:Number.isFinite(q.lossRate)?q.lossRate:null};
+        }
+      }catch{}
+      return value;
+    }));
+    if(epoch!==senderSignalEpoch||!isPublishing||navigator.onLine===false)return;
+    const known=readings.filter(x=>x&&(x.rttMs!=null||x.lossRatio!=null));
+    if(!known.length){senderSignalShown='waiting';senderSignalCandidate=null;senderSignalCandidateCount=0;setSenderNetworkSignal('waiting','รอค่า RTT/Packet Loss จาก WebRTC');return}
+    const levels=known.map(x=>senderSignalLevel(x.rttMs,x.lossRatio)).filter(x=>x!==null);
+    const candidate=Math.min(...levels);
+    // Debounce both bad and good changes to prevent a flickering indicator.
+    if(senderSignalCandidate===candidate)senderSignalCandidateCount++;
+    else{senderSignalCandidate=candidate;senderSignalCandidateCount=1}
+    if(senderSignalShown==='waiting'||senderSignalCandidateCount>=2)senderSignalShown=candidate;
+    const worst=known.find(x=>senderSignalLevel(x.rttMs,x.lossRatio)===senderSignalShown)||known[0];
+    const parts=[];
+    if(worst.rttMs!=null)parts.push(`RTT ${Math.round(worst.rttMs)} ms`);
+    if(worst.lossRatio!=null)parts.push(`Loss ${(worst.lossRatio*100).toFixed(1)}%`);
+    setSenderNetworkSignal(senderSignalShown,parts.join(' · '));
+  }finally{senderSignalBusy=false}
+}
+function startSenderNetworkSignal(){
+  stopSenderNetworkSignal();
+  setSenderNetworkSignal('waiting','กำลังวัดสัญญาณ');
+  senderSignalTimer=setInterval(()=>measureSenderNetworkSignal().catch(()=>{}),SENDER_SIGNAL_POLL_MS);
+  // Give ICE time to settle before the first measurement.
+  setTimeout(()=>measureSenderNetworkSignal().catch(()=>{}),1800);
+}
+function stopSenderNetworkSignal(){
+  senderSignalEpoch++;
+  if(senderSignalTimer)clearInterval(senderSignalTimer);
+  senderSignalTimer=null;senderSignalShown='waiting';senderSignalCandidate=null;senderSignalCandidateCount=0;
+  setSenderNetworkSignal('waiting','รอเริ่มส่งภาพ');
+}
+window.addEventListener('offline',()=>{if(isPublishing)setSenderNetworkSignal(0,'อุปกรณ์ออฟไลน์')});
+window.addEventListener('online',()=>{if(isPublishing){senderSignalShown='waiting';setSenderNetworkSignal('waiting','กำลังตรวจสอบใหม่');measureSenderNetworkSignal().catch(()=>{})}});
 
 function updatePeerCount(){ $('#statPeers').textContent=String(peerIds.size); }
 
@@ -1658,16 +1667,16 @@ async function startPublishing(){
   if(!room||!streamID)throw new Error('กรุณาระบุ Room และ Stream ID');
   vdo=new VDONinjaSDK({autoRecover:true,autoRelay:true,salt:'vdo.ninja'});
   vdo.addEventListener('connected',()=>{$('#statRtc').textContent='signaling connected';log('เชื่อม signaling แล้ว')});
-  vdo.addEventListener('publishing',()=>{isPublishing=true;$('#liveBadge').textContent='LIVE';updateSimpleStatus();$('#liveBadge').classList.add('ok');$('#statRtc').textContent='PUBLISHING';log('เริ่มส่ง WebRTC แล้ว');startTelemetry();startMicMeter();startMicHealth();requestWakeLock()});
-  vdo.addEventListener('peerConnected',e=>{const id=e.detail?.uuid;if(id){peerIds.add(id);updatePeerCount();log(`Viewer connected (${peerIds.size})`);setTimeout(sendTelemetry,250)}});
-  vdo.addEventListener('peerDisconnected',e=>{const id=e.detail?.uuid;if(id){peerIds.delete(id);updatePeerCount();log(`Viewer disconnected (${peerIds.size})`)}});
+  vdo.addEventListener('publishing',()=>{isPublishing=true;$('#liveBadge').textContent='LIVE';updateSimpleStatus();$('#liveBadge').classList.add('ok');$('#statRtc').textContent='PUBLISHING';log('เริ่มส่ง WebRTC แล้ว');startTelemetry();startMicMeter();startMicHealth();startSenderNetworkSignal();requestWakeLock()});
+  vdo.addEventListener('peerConnected',e=>{const id=e.detail?.uuid;if(id){peerIds.add(id);updatePeerCount();measureSenderNetworkSignal().catch(()=>{});log(`Viewer connected (${peerIds.size})`);setTimeout(sendTelemetry,250)}});
+  vdo.addEventListener('peerDisconnected',e=>{const id=e.detail?.uuid;if(id){peerIds.delete(id);updatePeerCount();measureSenderNetworkSignal().catch(()=>{});log(`Viewer disconnected (${peerIds.size})`)}});
   vdo.addEventListener('connectionRecovered',()=>{log('WebRTC recovered');scheduleIOSMicRoute(1000,'webrtc-recovered')});
   vdo.addEventListener('connectionFailed',()=>log('WebRTC connection failed'));
   const onData=e=>{const d=e.detail?.data??e.detail??e.data;const uuid=e.detail?.uuid??e.uuid??'';if(d&&typeof d==='object')handleRemote(d,uuid)};vdo.addEventListener('dataReceived',onData);
   await vdo.connect();await vdo.joinRoom({room});await vdo.publish(stream,{room,streamID,label:publisherLabel()});
   isPublishing=true;$('#liveBadge').textContent='LIVE';updateSimpleStatus();$('#liveBadge').classList.add('ok');$('#statRtc').textContent='PUBLISHING';
   startMessageChannel().catch(e=>log(`ช่องข้อความเริ่มไม่สำเร็จ: ${e.message}`));
-  startTelemetry();startMicMeter();startMicHealth();requestWakeLock();
+  startTelemetry();startMicMeter();startMicHealth();startSenderNetworkSignal();requestWakeLock();
   // The manual repair works only after audio has been captured and the live
   // publisher is ready; do the identical refresh automatically for external mics.
   scheduleIOSMicRoute();
@@ -1739,7 +1748,7 @@ async function stopAll(){
   try{if(messageVdo){await messageVdo.stopViewing?.(controlDataStreamId($('#room').value.trim()));await messageVdo.disconnect?.()}}catch{}
   messageVdo=null;messageReady=false;messageViewPending=false;
   try{if(vdo){await vdo.stopPublishing?.();await vdo.disconnect?.()}}catch{}
-  isPublishing=false;stopMicHealth();stopMicMeter();peerIds.clear();updatePeerCount();
+  isPublishing=false;stopSenderNetworkSignal();stopMicHealth();stopMicMeter();peerIds.clear();updatePeerCount();
   if(telemetryTimer){clearInterval(telemetryTimer);telemetryTimer=null}
   if(zoomState.timer){clearInterval(zoomState.timer);zoomState.timer=null}
   zoomState.drive=0;zoomState.velocity=0;zoomState.coasting=false;zoomState.virtual=zoomState.current;
@@ -1749,11 +1758,8 @@ async function stopAll(){
   if(IS_IOS)setIOSAudioSession('auto');
   closeMicProcessor(micProcessor);micProcessor=null;
   updateMicUi();updateMicGainUi();updateMicNoiseUi();
-  if(stabEngine){stabEngine.stop();stabEngine=null}
-  const stabCanvas=$('#stabilizedCanvas');if(stabCanvas)stabCanvas.hidden=true;
   outStream=null;
   video.srcObject=null;
-  updateStabilizeUi();
   setScreenRest(false);releaseWakeLock();
   $('#liveBadge').textContent='OFFLINE';updateSimpleStatus();$('#liveBadge').classList.remove('ok');$('#statRtc').textContent='OFFLINE';$('#statMic').textContent='-';updateSenderQualityUi();log('หยุดทั้งหมด')
 }
@@ -1837,8 +1843,6 @@ $('#micToggleBtn').onclick=()=>setMicMuted(!micMuted);
 $('#micGainRange').addEventListener('input',e=>setMicGain(e.target.value));
 $('#micGainResetBtn').onclick=()=>setMicGain(100);
 $('#micNoiseToggle').addEventListener('change',e=>setMicNoiseSuppression(e.target.checked));
-$('#stabilizeToggle').addEventListener('change',e=>{setStabilizationEnabled(e.target.checked).catch(err=>log(`Stabilizer switch: ${err.message}`))});
-updateStabilizeUi();
 $('#micDeviceSelect').addEventListener('change',()=>micStatus('เลือกแล้ว • กดใช้ไมค์ที่เลือกเพื่อเปลี่ยนเสียงจริง'));
 $('#refreshMicBtn').onclick=async()=>{
   const btn=$('#refreshMicBtn');btn.disabled=true;
@@ -1916,29 +1920,10 @@ if(IS_IOS){
   window.addEventListener('pageshow',()=>{if(isPublishing)scheduleIOSMicRoute(950,'page-shown')});
   window.addEventListener('focus',()=>{if(isPublishing&&Date.now()-iosMicRouteLastSuccessAt>15000)scheduleIOSMicRoute(700,'window-focused')});
 }
-let stabRestoreAfterBackground=false,stabPausePromise=null;
-document.addEventListener('visibilitychange',()=>{
-  if(document.hidden&&stabEngine){
-    // Background canvas rendering can be throttled. Best-effort switch to the
-    // direct camera; remember the desired setting for when we return.
-    stabRestoreAfterBackground=stabilizeWanted;
-    stabPausePromise=setStabilizationEnabled(false,{persist:false,message:'พักกันสั่นขณะสลับแอป'});
-  }else if(!document.hidden&&stabRestoreAfterBackground){
-    stabRestoreAfterBackground=false;
-    const waiting=stabPausePromise;stabPausePromise=null;
-    Promise.resolve(waiting).then(()=>{
-      stabilizeWanted=true;
-      // Resume only when visible and the camera is still alive.
-      if(isPublishing&&cameraStream?.getVideoTracks?.()[0]?.readyState==='live')
-        return setStabilizationEnabled(true,{persist:false});
-      updateStabilizeUi();
-    }).catch(e=>log(`กลับมาเปิดกันสั่นไม่ได้: ${e.message}`));
-  }
-});
 window.addEventListener('beforeunload',()=>stopAll());
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=01149').catch(()=>{});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=01151').catch(()=>{});
 $('#statHint').textContent=q().hint;
 $('#statSmartProfile').textContent=smartProfile;
 initIdentity();updateSimpleStatus();updateMicUi();updateMicGainUi();updateMicNoiseUi();
 $('#newStreamId').onclick=generateNewStreamId;
-log(`v0.11.50 LIGHT STABILIZATION พร้อมใช้งาน — Sender quick quality presets / Mic Volume & Noise Reduction / Control Data Hub — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
+log(`v0.11.51 DIRECT CAMERA TRACK (v0.11.49 video/audio) พร้อมใช้งาน — Sender quick quality presets / Mic Volume & Noise Reduction / Control Data Hub — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);

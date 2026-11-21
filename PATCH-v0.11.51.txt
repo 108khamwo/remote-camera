@@ -1,0 +1,7 @@
+Remote Camera v0.11.51 — REMOVE EXPERIMENTAL STABILIZATION
+Source: v0.11.49 — stable direct Camera Video Track.
+Why: v0.11.50 frame-processing Canvas stabilization froze the live video on a real device.
+Removed: stabilization.js, stabilizedCanvas, stabilization toggle/status, all stabilization code from the sender video pipeline.
+Preserved: v0.11.49 mic auto route guard, HOLLYLAND external mic, quality presets, Smart Network, control, messages, QR, permanent URLs.
+Cache bust: sender page/scripts CSS asset query ?v=01151 and service worker cache remote-camera-v01151.
+Deployment: upload all ZIP contents to existing GitHub Pages; optionally DELETE stale stabilization.js from repo. Sender/Control new page refresh recommended.

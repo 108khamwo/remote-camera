@@ -943,11 +943,31 @@ body.fullscreen-active .sender-call-controls{flex:none}
 /* v0.11.47: hidden iOS mic helpers must not take space on Android. */
 .settings-button-row[hidden]{display:none!important}
 
-/* v0.11.50: processed preview occupies exactly the old camera stage.
-   Never intercept the message toast, zoom controls, or touch hit targets. */
-.sender-call-stage>.sender-stabilizer-canvas{
-  position:absolute;inset:0;display:block;width:100%;height:100%;
-  object-fit:cover;pointer-events:none!important;z-index:0;
+/* v0.11.52 — 4-bar WebRTC link indicator; read-only, no touch interception. */
+.sender-call-overlay-top {gap:6px}
+.sender-network-signal {
+  display:inline-flex;flex:0 0 26px;width:26px;height:23px;
+  align-items:center;justify-content:center;
+  border-radius:8px;background:rgba(2,10,16,.66);
+  color:#82939e;pointer-events:none;user-select:none;
+  -webkit-user-select:none;backdrop-filter:blur(6px);
 }
-.sender-call-stage>.sender-stabilizer-canvas[hidden]{display:none!important}
-#stabilizeToggle{flex:none;accent-color:#00c0fa}
+.sender-network-bars {display:flex;align-items:flex-end;gap:2px;height:14px}
+.sender-network-bars i {display:block;width:3px;border-radius:2px 2px 0 0;background:currentColor;opacity:.24}
+.sender-network-bars i:nth-child(1){height:5px}
+.sender-network-bars i:nth-child(2){height:8px}
+.sender-network-bars i:nth-child(3){height:11px}
+.sender-network-bars i:nth-child(4){height:14px}
+.sender-network-signal[data-level="4"],.sender-network-signal[data-level="3"]{color:#39de9d}
+.sender-network-signal[data-level="2"]{color:#f2bd54}
+.sender-network-signal[data-level="1"]{color:#ff9766}
+.sender-network-signal[data-level="0"]{color:#ff666d}
+.sender-network-signal[data-level="1"] i:nth-child(-n+1),
+.sender-network-signal[data-level="2"] i:nth-child(-n+2),
+.sender-network-signal[data-level="3"] i:nth-child(-n+3),
+.sender-network-signal[data-level="4"] i:nth-child(-n+4){opacity:1}
+/* Keep LIVE + signal indicator to one compact line in both orientations. */
+.sender-call-overlay-top .sender-network-signal{max-width:none}
+@media(orientation:landscape) and (max-height:360px){
+  .sender-network-signal{height:22px;width:25px;flex-basis:25px}
+}
