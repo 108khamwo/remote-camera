@@ -1,4 +1,4 @@
-/* Remote Camera v0.11.48 — automatically refresh confirmed iOS external microphone route after LIVE starts */
+/* Remote Camera v0.11.49 — iOS external microphone route guard during LIVE */
 const $=s=>document.querySelector(s); const logEl=$('#log');
 function log(m){const t=new Date().toLocaleTimeString();logEl.textContent+=`[${t}] ${m}\n`;if(logEl.textContent.length>18000)logEl.textContent=logEl.textContent.slice(-12000);logEl.scrollTop=logEl.scrollHeight}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -631,6 +631,7 @@ async function checkMicHealth(){
         micForceDirect=true;await requestMicOutputSync();
       }
     }
+    await checkIOSMicRouteGuard();
   }finally{micHealthRunning=false}
 }
 function startMicHealth(){
@@ -691,61 +692,133 @@ function externalMicPriority(device){
   }
   return 0;
 }
-// v0.11.48: the user-confirmed iOS repair works AFTER microphone capture and
-// publishing. Run that SAME route refresh automatically for identifiable external
-// inputs. Never reopen the camera, replace WebRTC tracks, or poll audioSession.
+// v0.11.49: iOS can silently switch its *physical* capture route while a
+// MediaStreamTrack remains live and reports the same deviceId. The web platform
+// cannot determine the actual hardware input reliably. Apply the user-proven
+// AudioSession workaround on route-affecting events and, for identifiable
+// external mics only, make guarded, low-frequency refreshes during LIVE.
+// Never reopen camera/audio or replace a WebRTC track from this route guard.
+const IOS_ROUTE_REPAIR_COOLDOWN_MS=12000;
+const IOS_ROUTE_QUIET_RECHECK_MS=45000;
+const IOS_ROUTE_MAX_AGE_MS=90000;
 let iosMicRouteTimer=null,iosMicRoutePromise=null;
+let iosMicRouteLastSuccessAt=0,iosMicRouteLastAttemptAt=0;
+let iosMicRouteLastGuardAt=0,iosMicRouteLastReason='';
+let iosMicExternalCache=null,iosMicExternalCacheAt=0;
+let iosMicSessionWasInterrupted=false;
 function clearScheduledIOSMicRoute(){
   if(iosMicRouteTimer!==null){clearTimeout(iosMicRouteTimer);iosMicRouteTimer=null}
 }
+function invalidateIOSMicRouteCache(){iosMicExternalCache=null;iosMicExternalCacheAt=0}
 function externalMicLabel(label){
   return externalMicPriority({kind:'audioinput',deviceId:'selected',label:String(label||'')})>0;
 }
 async function iosExternalMicSelected(){
   const track=activeMicTrack();
   if(!IS_IOS||track?.readyState!=='live')return false;
-  if(iosMicSystemRoute)return true; // Explicitly requested iOS system routing.
+  if(iosMicSystemRoute)return true;
   if(externalMicLabel(track.label)||externalMicLabel(preferredMicLabel))return true;
   if(!explicitMicDeviceId)return false;
+  const now=Date.now();
+  if(iosMicExternalCache!==null&&now-iosMicExternalCacheAt<15000)return iosMicExternalCache;
   try{
     const devices=await navigator.mediaDevices.enumerateDevices();
-    return devices.some(d=>d.kind==='audioinput'&&d.deviceId===explicitMicDeviceId&&externalMicLabel(d.label));
-  }catch{return false}
+    iosMicExternalCache=devices.some(d=>d.kind==='audioinput'&&d.deviceId===explicitMicDeviceId&&externalMicLabel(d.label));
+  }catch{iosMicExternalCache=false}
+  iosMicExternalCacheAt=now;
+  return iosMicExternalCache;
 }
-async function refreshIOSMicRoute({manual=false}={}){
+async function refreshIOSMicRoute({manual=false,reason=''}={}){
   if(!IS_IOS||!navigator.audioSession)return false;
   if(iosMicRoutePromise)return iosMicRoutePromise;
   const generation=micSessionGeneration;
+  const now=Date.now();
+  if(!manual&&now-iosMicRouteLastAttemptAt<IOS_ROUTE_REPAIR_COOLDOWN_MS)return false;
   const refresh=(async()=>{
     if(!activeMicTrack()||activeMicTrack().readyState!=='live'){
       if(!manual)return false;
       await ensureMic();
     }
     if(generation!==micSessionGeneration||activeMicTrack()?.readyState!=='live')return false;
-    if(!manual&&(!isPublishing||!await iosExternalMicSelected()))return false;
-    // Use the proven v0.11.47 button sequence. Don't stop/reopen the mic.
+    if(!manual&&(!isPublishing||micSwitchPromise||!await iosExternalMicSelected()))return false;
+    if(navigator.audioSession.state==='interrupted'){
+      log('iOS mic route: audio session interrupted; defer until active');
+      return false;
+    }
+    if(!manual)iosMicRouteLastAttemptAt=Date.now();
+    // The same sequence as the manual button that worked with HOLLYLAND.
     setIOSAudioSession('auto');
     await sleep(100);
     if(generation!==micSessionGeneration||activeMicTrack()?.readyState!=='live')return false;
+    if(!manual&&(!isPublishing||micSwitchPromise))return false;
     const ok=setIOSAudioSession('play-and-record');
+    if(ok){
+      iosMicRouteLastSuccessAt=Date.now();
+      iosMicRouteLastReason=manual?'manual':(reason||'guard');
+    }
     if(manual)micStatus(ok?'สั่ง iOS จัดเส้นทางเสียงใหม่แล้ว • ฟังทดสอบไมค์นอก':'เบราว์เซอร์ไม่เปิดให้แก้เส้นทางเสียง • ลองให้ iOS เลือกเอง');
-    else if(ok){micStatus('ลองจัดเส้นทางไมค์นอกให้อัตโนมัติ • ทดสอบเสียงจริง');log('iOS external microphone route refreshed automatically')}
-    else log('iOS external microphone automatic route unavailable; manual repair remains');
+    else log(`iOS external mic route guard: ${ok?'requested':'unavailable'} (${reason||'automatic'})`);
     return ok;
   })();
   iosMicRoutePromise=refresh;
   try{return await refresh}finally{if(iosMicRoutePromise===refresh)iosMicRoutePromise=null}
 }
-function scheduleIOSMicRoute(){
-  if(!IS_IOS)return;
-  clearScheduledIOSMicRoute();
+function scheduleIOSMicRoute(delayMs=350,reason='live-start'){
+  if(!IS_IOS||!isPublishing)return;
+  // Don't cancel a pending immediate repair with a later/deferred event.
+  if(iosMicRouteTimer!==null)return;
   const generation=micSessionGeneration;
+  const remaining=Math.max(0,IOS_ROUTE_REPAIR_COOLDOWN_MS-(Date.now()-iosMicRouteLastAttemptAt));
+  const delay=Math.max(delayMs,remaining);
   iosMicRouteTimer=setTimeout(()=>{
     iosMicRouteTimer=null;
     if(generation!==micSessionGeneration||!isPublishing)return;
-    // Avoid overlapping microphone changes and never interrupt video.
-    refreshIOSMicRoute().catch(e=>log(`Automatic mic route: ${e.message}`));
-  },350);
+    if(micSwitchPromise){scheduleIOSMicRoute(800,'mic-switch');return}
+    refreshIOSMicRoute({reason}).catch(e=>log(`iOS mic route guard: ${e.message}`));
+  },delay);
+}
+function bindIOSMicTrackEvents(track){
+  if(!IS_IOS||!track?.addEventListener||track._rcIosRouteEventsBound)return;
+  try{track._rcIosRouteEventsBound=true}catch{}
+  track.addEventListener('unmute',()=>{
+    if(isPublishing&&track===activeMicTrack())scheduleIOSMicRoute(650,'mic-unmute');
+  });
+  track.addEventListener('ended',()=>{
+    if(isPublishing&&track===activeMicTrack())checkMicHealth().catch(()=>{});
+  });
+}
+function iosRouteAudioQuiet(){
+  if(micMuted)return true;
+  const p=micProcessor;
+  if(!p||p.fallback||p.context?.state!=='running')return false;
+  try{return micRms(p.inputAnalyser,p.inputData)<0.012}catch{return false}
+}
+async function checkIOSMicRouteGuard(){
+  if(!IS_IOS||!isPublishing||!navigator.audioSession||micSwitchPromise||iosMicRoutePromise||iosMicRouteTimer!==null)return;
+  if(document.visibilityState==='hidden'||navigator.audioSession.state==='interrupted')return;
+  const now=Date.now();
+  if(now-iosMicRouteLastGuardAt<8000)return;
+  iosMicRouteLastGuardAt=now;
+  if(!await iosExternalMicSelected())return;
+  if(navigator.audioSession.type!=='play-and-record'){
+    scheduleIOSMicRoute(250,'session-type-changed');return;
+  }
+  // DeviceId/track.readyState cannot reveal the actual iOS physical route.
+  // Refresh during a quiet moment, or after a longer maximum interval, so
+  // external routing cannot remain wrong indefinitely without user input.
+  const age=now-(iosMicRouteLastSuccessAt||now);
+  if(age>=IOS_ROUTE_MAX_AGE_MS || (age>=IOS_ROUTE_QUIET_RECHECK_MS&&iosRouteAudioQuiet())){
+    scheduleIOSMicRoute(250,age>=IOS_ROUTE_MAX_AGE_MS?'periodic-guard':'quiet-window');
+  }
+}
+function onIOSAudioSessionStateChange(){
+  if(!IS_IOS||!navigator.audioSession)return;
+  const state=navigator.audioSession.state;
+  if(state==='interrupted'){iosMicSessionWasInterrupted=true;return}
+  if(iosMicSessionWasInterrupted&&state==='active'){
+    iosMicSessionWasInterrupted=false;
+    scheduleIOSMicRoute(700,'audio-session-resumed');
+  }
 }
 async function preferredAutomaticMic(){
   const md=navigator.mediaDevices;
@@ -888,6 +961,8 @@ async function selectMicrophone(deviceId='',{mode='manual'}={}){
         if(!outStream.getAudioTracks().includes(nextTrack))outStream.addTrack(nextTrack);
       }
       audioStream=newStream;micProcessor=newProcessor;
+      invalidateIOSMicRouteCache();
+      bindIOSMicTrackEvents(captured.track);
       rememberMicrophoneSelection(deviceId,captured.track,{mode});
       const selectedMic=$('#micDeviceSelect');if(selectedMic)selectedMic.value=mode==='auto'?'':(deviceId||'');
       committed=true;
@@ -920,6 +995,7 @@ async function selectMicrophone(deviceId='',{mode='manual'}={}){
           if(isPublishing&&vdo&&oldTrack)await vdo.replaceTrack(oldTrack,fallbackTrack);
           if(outStream){if(oldTrack)outStream.removeTrack(oldTrack);outStream.addTrack(fallbackTrack)}
           audioStream=recovered.stream;micProcessor=restored;
+          invalidateIOSMicRouteCache();bindIOSMicTrackEvents(recovered.track);
           closeMicProcessor(oldProcessor);
           updateMicUi();updateMicGainUi();updateMicNoiseUi();
           log(`Restored previous mic: ${micName(recovered.track)}`);
@@ -1371,6 +1447,7 @@ async function openCamera({facing=currentFacing,deviceId=''}={}){
     if(oldStream&&oldStream!==nextStream){oldStream.getTracks().forEach(t=>{if(t!==oldTrack||t.readyState!=='ended')try{t.stop()}catch{}})}
     log(`เปิดกล้อง: ${nextTrack.label||facing} / ${PLATFORM} / hint=${q().hint}`);
     if(!qualitySwitchBusy)updateSenderQualityUi();
+    if(isPublishing)scheduleIOSMicRoute(900,'camera-reopened');
     return nextTrack;
   }finally{openingCamera=false}
 }
@@ -1495,7 +1572,7 @@ async function startPublishing(){
   vdo.addEventListener('publishing',()=>{isPublishing=true;$('#liveBadge').textContent='LIVE';updateSimpleStatus();$('#liveBadge').classList.add('ok');$('#statRtc').textContent='PUBLISHING';log('เริ่มส่ง WebRTC แล้ว');startTelemetry();startMicMeter();startMicHealth();requestWakeLock()});
   vdo.addEventListener('peerConnected',e=>{const id=e.detail?.uuid;if(id){peerIds.add(id);updatePeerCount();log(`Viewer connected (${peerIds.size})`);setTimeout(sendTelemetry,250)}});
   vdo.addEventListener('peerDisconnected',e=>{const id=e.detail?.uuid;if(id){peerIds.delete(id);updatePeerCount();log(`Viewer disconnected (${peerIds.size})`)}});
-  vdo.addEventListener('connectionRecovered',()=>log('WebRTC recovered'));
+  vdo.addEventListener('connectionRecovered',()=>{log('WebRTC recovered');scheduleIOSMicRoute(1000,'webrtc-recovered')});
   vdo.addEventListener('connectionFailed',()=>log('WebRTC connection failed'));
   const onData=e=>{const d=e.detail?.data??e.detail??e.data;const uuid=e.detail?.uuid??e.uuid??'';if(d&&typeof d==='object')handleRemote(d,uuid)};vdo.addEventListener('dataReceived',onData);
   await vdo.connect();await vdo.joinRoom({room});await vdo.publish(stream,{room,streamID,label:publisherLabel()});
@@ -1567,6 +1644,8 @@ async function handleRemote(d,sourceUuid=''){
 async function stopAll(){
   micSessionGeneration++; // cancel any unfinished microphone acquisition
   clearScheduledIOSMicRoute();
+  iosMicRouteLastSuccessAt=0;iosMicRouteLastAttemptAt=0;iosMicRouteLastGuardAt=0;
+  iosMicSessionWasInterrupted=false;invalidateIOSMicRouteCache();
   if(messageRetryTimer){clearInterval(messageRetryTimer);messageRetryTimer=null}
   try{if(messageVdo){await messageVdo.stopViewing?.(controlDataStreamId($('#room').value.trim()));await messageVdo.disconnect?.()}}catch{}
   messageVdo=null;messageReady=false;messageViewPending=false;
@@ -1712,6 +1791,8 @@ updateIOSMicRouteUi();
 if(navigator.mediaDevices?.addEventListener){
   navigator.mediaDevices.addEventListener('devicechange',()=>{
     if(!$('#settingsSheet').hidden)listMicrophones().catch(()=>{});
+    invalidateIOSMicRouteCache();
+    if(isPublishing)scheduleIOSMicRoute(1300,'audio-device-change');
   });
 }
 document.querySelectorAll('[data-close-settings],[data-close-message]').forEach(el=>el.addEventListener('click',closeSheets));
@@ -1733,12 +1814,18 @@ document.addEventListener('visibilitychange',()=>{
     requestWakeLock();
     if(p?.context?.state==='suspended'||p?.context?.state==='interrupted')p.context.resume().catch(()=>{});
     checkMicHealth().catch(()=>{});
+    scheduleIOSMicRoute(850,'page-visible');
   }
 });
+if(IS_IOS){
+  navigator.audioSession?.addEventListener?.('statechange',onIOSAudioSessionStateChange);
+  window.addEventListener('pageshow',()=>{if(isPublishing)scheduleIOSMicRoute(950,'page-shown')});
+  window.addEventListener('focus',()=>{if(isPublishing&&Date.now()-iosMicRouteLastSuccessAt>15000)scheduleIOSMicRoute(700,'window-focused')});
+}
 window.addEventListener('beforeunload',()=>stopAll());
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=01148').catch(()=>{});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=01149').catch(()=>{});
 $('#statHint').textContent=q().hint;
 $('#statSmartProfile').textContent=smartProfile;
 initIdentity();updateSimpleStatus();updateMicUi();updateMicGainUi();updateMicNoiseUi();
 $('#newStreamId').onclick=generateNewStreamId;
-log(`v0.11.48 AUTO iOS MIC ROUTE พร้อมใช้งาน — Sender quick quality presets / Mic Volume & Noise Reduction / Control Data Hub — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
+log(`v0.11.49 iOS MIC ROUTE GUARD พร้อมใช้งาน — Sender quick quality presets / Mic Volume & Noise Reduction / Control Data Hub — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);

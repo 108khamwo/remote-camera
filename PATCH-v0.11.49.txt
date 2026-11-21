@@ -1,0 +1,12 @@
+Remote Camera v0.11.49 — IOS MIC ROUTE GUARD
+
+Fix: v0.11.48 refreshes the iOS microphone audio session only on LIVE start or explicit mic change. iOS can silently route capture back to the built-in microphone later while the existing Audio Track stays live.
+
+- Preserve the same user-confirmed manual repair (audioSession auto -> 100ms -> play-and-record), without reopening mic/camera, replacing WebRTC media, or changing controls/messages.
+- During LIVE on iOS with an identifiable external mic, watch audio-session interruption/resume, device changes, mic unmute, page foreground and camera/WebRTC reconnect events; reassert the route with cooldown.
+- Low-frequency fallback route refresh while streaming: after >=45 s of a quiet window, or >=90 s at most, because the browser offers no reliable API for checking the actual microphone hardware input.
+- Avoid periodic refresh while hidden, interrupted or changing microphones. At most one repair is pending; 12-second cooldown prevents repeated toggles.
+- Keep manual route repair button available. This is a best-effort mitigation of iOS/WebKit behavior; no proof of external microphone routing is available through JS.
+- No other features changed, including microphone selection, audio processing, camera, QR, Control Center, permanent URLs and messages.
+
+Test on the actual iPhone/HOLLYLAND receiver for at least 10-15 minutes. If routing changes despite the guard, capture the exact time and activity (orientation, phone lock, phone call, notification, Control audio monitor), and try the manual repair button.
