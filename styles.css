@@ -939,3 +939,6 @@ body.fullscreen-active .sender-call-controls{flex:none}
 /* Keep the share button and dialog close button compact despite global button width:100%. */
 .share-control-btn{width:auto;flex:0 0 auto}
 .share-qr-head button{width:38px;flex:0 0 38px;padding:7px}
+
+/* v0.11.47: hidden iOS mic helpers must not take space on Android. */
+.settings-button-row[hidden]{display:none!important}

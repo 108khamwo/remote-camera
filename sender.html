@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="mobile-web-app-capable" content="yes">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=01146">
+  <link rel="stylesheet" href="styles.css?v=01147">
   <title>ผู้ส่ง | ระบบ Live Streaming ระยะไกลผ่านมือถือ</title>
 </head>
 <body class="sender-call-body">
@@ -126,6 +126,10 @@
             <button id="applyMicBtn" class="ghost" type="button">ใช้ไมค์ที่เลือก</button>
           </div>
           <div id="micDeviceStatus" class="mini settings-hint" role="status"></div>
+          <div id="iosMicRouteControls" class="settings-button-row" style="margin-top:8px" hidden>
+            <button id="iosMicRepairBtn" class="ghost" type="button">แก้เส้นทางเสียง</button>
+            <button id="iosMicSystemBtn" class="ghost" type="button">ให้ iOS เลือกเอง</button>
+          </div>
         </div>
 
         <div class="settings-group mic-audio-settings">
@@ -232,6 +236,6 @@
     <div id="screenRestHint" class="sender-rest-hint">พักหน้าจอแล้ว<br><small>ภาพและเสียงยังส่งตามปกติ • แตะเพื่อกลับ</small></div>
   </div>
 </main>
-<script src="sdk-loader.js?v=01146"></script><script src="sender.js?v=01146"></script><script src="fullscreen.js?v=01146"></script>
+<script src="sdk-loader.js?v=01147"></script><script src="sender.js?v=01147"></script><script src="fullscreen.js?v=01147"></script>
 </body>
 </html>

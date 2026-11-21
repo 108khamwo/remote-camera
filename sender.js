@@ -1,4 +1,4 @@
-/* Remote Camera v0.11.46 — iOS external microphone selection regression fix */
+/* Remote Camera v0.11.47 — iOS microphone routing and prior capture behavior restore */
 const $=s=>document.querySelector(s); const logEl=$('#log');
 function log(m){const t=new Date().toLocaleTimeString();logEl.textContent+=`[${t}] ${m}\n`;if(logEl.textContent.length>18000)logEl.textContent=logEl.textContent.slice(-12000);logEl.scrollTop=logEl.scrollHeight}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -81,6 +81,22 @@ const IS_IOS=/iPhone|iPad|iPod/i.test(UA) || (navigator.platform==='MacIntel' &&
 const IS_SAMSUNG=/SamsungBrowser/i.test(UA);
 const PLATFORM=IS_ANDROID?'Android':IS_IOS?'iOS':'Browser';
 const BROWSER=IS_SAMSUNG?'Samsung Internet':/FxiOS|Firefox/i.test(UA)?'Firefox':/CriOS|Chrome/i.test(UA)?'Chrome':/Safari/i.test(UA)?'Safari':'Web Browser';
+const IOS_MIC_ROUTE_PREF_KEY='remoteCamIosMicSystemRouteV1';
+let iosMicSystemRoute=IS_IOS&&localStorage.getItem(IOS_MIC_ROUTE_PREF_KEY)==='1';
+function setIOSAudioSession(type){
+  if(!IS_IOS||!navigator.audioSession)return false;
+  try{
+    navigator.audioSession.type=type;
+    log(`iOS audio session: ${navigator.audioSession.type}`);
+    return navigator.audioSession.type===type;
+  }catch(e){log(`iOS audio session not available: ${e.message}`);return false}
+}
+function updateIOSMicRouteUi(){
+  const row=$('#iosMicRouteControls'),btn=$('#iosMicSystemBtn');
+  if(row)row.hidden=!IS_IOS;
+  if(btn){btn.textContent=iosMicSystemRoute?'ใช้ไมค์จากรายการ':'ให้ iOS เลือกเอง';btn.setAttribute('aria-pressed',String(iosMicSystemRoute))}
+}
+
 const DEVICE_KEY='remoteCamPhysicalDeviceIdV1';
 // A permanent sender link owns its stream identity, even on a different phone/browser.
 // Reject unknown/malformed URL IDs rather than silently sending to an unrelated stream.
@@ -331,8 +347,13 @@ async function listDevices(){
 // The raw microphone stays separate from the WebRTC audio track so software
 // gain can be changed in real time without reopening the microphone.
 function micCaptureOptions(deviceId=''){
+  // iOS System Route deliberately omits exact deviceId so WebKit/OS can
+  // choose the connected USB/Lightning audio route. This is a fallback, not
+  // proof that physical capture moved to the external microphone.
+  if(IS_IOS&&iosMicSystemRoute)return {audio:true,video:false};
+  const requestedId=deviceId;
   return {audio:{echoCancellation:false,noiseSuppression:micNoiseSuppressionEnabled,autoGainControl:false,
-    ...(deviceId?{deviceId:{exact:deviceId}}:{})},video:false};
+    ...(requestedId?{deviceId:{exact:requestedId}}:{})},video:false};
 }
 function activeMicTrack(){return audioStream?.getAudioTracks?.()[0]||null}
 function micOutgoingTrack(){return micProcessor?.outgoingTrack||activeMicTrack()}
@@ -752,10 +773,15 @@ async function listMicrophones({requestPermission=false}={}){
   }finally{temporary?.getTracks?.().forEach(t=>t.stop())}
 }
 async function verifiedMicCapture(deviceId){
+  // WebKit: a default audio session can stay routed to iPhone even after an
+  // external mic was selected. Reset before capture, then request a real
+  // recording session after capture (when the browser supports the API).
+  if(IS_IOS)setIOSAudioSession('auto');
   const stream=await navigator.mediaDevices.getUserMedia(micCaptureOptions(deviceId));
+  if(IS_IOS)setIOSAudioSession('play-and-record');
   const track=stream.getAudioTracks()[0];
   if(!track){stream.getTracks().forEach(t=>t.stop());throw new Error('เบราว์เซอร์ไม่ได้ส่ง Audio Track กลับมา')}
-  const check=micSelectionCheck(deviceId,track);
+  const check=micSelectionCheck(IS_IOS&&iosMicSystemRoute?'':deviceId,track);
   if(!check.ok){
     stream.getTracks().forEach(t=>t.stop());
     throw new Error('เบราว์เซอร์เปิดไมค์คนละตัวกับที่เลือก (ตรวจจาก Device ID)');
@@ -776,7 +802,9 @@ async function selectMicrophone(deviceId='',{mode='manual'}={}){
     let newStream=null,newProcessor=null,priorCaptureStopped=false,committed=false;
     const switchingSource=!!oldSource&&oldSource.readyState==='live'&&
       (deviceId!==explicitMicDeviceId || (deviceId&&oldDevice&&oldDevice!==deviceId));
-    const exclusiveMobile=(IS_IOS||IS_ANDROID)&&switchingSource;
+    const exclusiveMobile=(IS_ANDROID&&switchingSource) ||
+      // The explicit iOS system-routing fallback starts a fresh audio route.
+      (IS_IOS&&iosMicSystemRoute&&!!oldSource&&oldSource.readyState==='live');
     try{
       micStatus('กำลังเปลี่ยนไมค์…');
       if(exclusiveMobile){
@@ -790,6 +818,9 @@ async function selectMicrophone(deviceId='',{mode='manual'}={}){
       if(generation!==micSessionGeneration)throw new Error('ยกเลิกการเปิดไมค์หลังหยุดส่ง');
       captured.track.enabled=!micMuted;
       newProcessor=await createMicProcessor(newStream);
+      // AudioContext creation can change iOS output/input audio session state.
+      // Reassert the recording session after initializing processing nodes.
+      if(IS_IOS)setIOSAudioSession('play-and-record');
       if(generation!==micSessionGeneration)throw new Error('ยกเลิกการเปิดไมค์หลังหยุดส่ง');
       const nextTrack=newProcessor?.outgoingTrack;
       if(!nextTrack)throw new Error('ไม่มี Audio Track สำหรับส่งไลฟ์');
@@ -811,7 +842,9 @@ async function selectMicrophone(deviceId='',{mode='manual'}={}){
       if(isPublishing)startMicMeter();
       await listMicrophones();
       const verified=captured.check.verified;
-      micStatus(micSelectionStatus(captured.track,deviceId,{verified,changed:true}));
+      micStatus(IS_IOS&&iosMicSystemRoute?
+        'ให้ iOS เลือกแหล่งเสียงแล้ว • ฟังทดสอบไมค์นอก':
+        micSelectionStatus(captured.track,deviceId,{verified,changed:true}));
       log(`Mic switched: ${micName(captured.track)} / requested ${deviceId||'auto'} / actual ${captured.check.actualId||'unknown'} / verified=${verified} / outgoing ${nextTrack.id}`);
       if(isPublishing)setTimeout(sendTelemetry,50);
       return captured.track;
@@ -1485,6 +1518,7 @@ async function stopAll(){
   frameMeterGeneration++;measuredCameraFps=0;
   if(cameraStream){cameraStream.getTracks().forEach(t=>t.stop());cameraStream=null}
   if(audioStream){audioStream.getTracks().forEach(t=>t.stop());audioStream=null}
+  if(IS_IOS)setIOSAudioSession('auto');
   closeMicProcessor(micProcessor);micProcessor=null;
   updateMicUi();updateMicGainUi();updateMicNoiseUi();
   outStream=null;
@@ -1580,12 +1614,47 @@ $('#refreshMicBtn').onclick=async()=>{
 $('#applyMicBtn').onclick=async()=>{
   const btn=$('#applyMicBtn');btn.disabled=true;
   try{
+    // Explicit choice should really request that device, not inherit the
+    // optional iOS system-route fallback from a previous experiment.
+    if(IS_IOS&&iosMicSystemRoute){iosMicSystemRoute=false;localStorage.setItem(IOS_MIC_ROUTE_PREF_KEY,'0');updateIOSMicRouteUi()}
     const id=$('#micDeviceSelect').value;
     if(id)await selectMicrophone(id,{mode:'manual'});
     else await selectAutomaticMicrophone();
   }catch{}
   finally{btn.disabled=false}
 };
+$('#iosMicRepairBtn').onclick=async()=>{
+  const btn=$('#iosMicRepairBtn');btn.disabled=true;
+  try{
+    if(!activeMicTrack()||activeMicTrack().readyState!=='live')await ensureMic();
+    // Best-effort WebKit route refresh; keeps the same publisher audio/video
+    // tracks and does not renegotiate/refresh the Control or OBS receiver.
+    setIOSAudioSession('auto');
+    await sleep(100);
+    const supported=setIOSAudioSession('play-and-record');
+    micStatus(supported?'สั่ง iOS จัดเส้นทางเสียงใหม่แล้ว • ฟังทดสอบไมค์นอก':'เบราว์เซอร์ไม่เปิดให้แก้เส้นทางเสียง • ลองให้ iOS เลือกเอง');
+  }catch(e){micStatus(`แก้เส้นทางเสียงไม่สำเร็จ: ${e.message}`)}
+  finally{btn.disabled=false}
+};
+$('#iosMicSystemBtn').onclick=async()=>{
+  const btn=$('#iosMicSystemBtn');btn.disabled=true;
+  const previous=iosMicSystemRoute;
+  try{
+    iosMicSystemRoute=!iosMicSystemRoute;
+    updateIOSMicRouteUi();
+    // Keep user-selected microphone label for the manual mode. In system mode,
+    // iOS chooses the actual device by its audio route (no exact constraint).
+    if(micSelectionMode==='auto')await selectAutomaticMicrophone();
+    else await selectMicrophone(explicitMicDeviceId,{mode:'manual'});
+    localStorage.setItem(IOS_MIC_ROUTE_PREF_KEY,iosMicSystemRoute?'1':'0');
+    micStatus(iosMicSystemRoute?'ทดลอง iOS เลือกไมค์เอง • โปรดฟังเสียงจริง':'ทดลองไมค์ตามรายการ • โปรดฟังเสียงจริง');
+  }catch(e){
+    iosMicSystemRoute=previous;
+    updateIOSMicRouteUi();
+    micStatus(`สลับเส้นทางไม่สำเร็จ: ${e.message}`);
+  }finally{btn.disabled=false}
+};
+updateIOSMicRouteUi();
 if(navigator.mediaDevices?.addEventListener){
   navigator.mediaDevices.addEventListener('devicechange',()=>{
     if(!$('#settingsSheet').hidden)listMicrophones().catch(()=>{});
@@ -1613,9 +1682,9 @@ document.addEventListener('visibilitychange',()=>{
   }
 });
 window.addEventListener('beforeunload',()=>stopAll());
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=01145').catch(()=>{});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=01147').catch(()=>{});
 $('#statHint').textContent=q().hint;
 $('#statSmartProfile').textContent=smartProfile;
 initIdentity();updateSimpleStatus();updateMicUi();updateMicGainUi();updateMicNoiseUi();
 $('#newStreamId').onclick=generateNewStreamId;
-log(`v0.11.45 AUTO EXTERNAL MIC พร้อมใช้งาน — Sender quick quality presets / Mic Volume & Noise Reduction / Control Data Hub — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
+log(`v0.11.47 iOS MIC ROUTE พร้อมใช้งาน — Sender quick quality presets / Mic Volume & Noise Reduction / Control Data Hub — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);

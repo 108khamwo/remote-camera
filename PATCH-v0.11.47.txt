@@ -1,0 +1,9 @@
+Remote Camera v0.11.47 — iOS MIC ROUTING TRIAL
+
+- Restore iOS microphone switch order from versions 0.11.39–0.11.43.
+- Keep external microphone preference but stop relying on deviceId as physical route proof.
+- On iOS support navigator.audioSession auto -> play-and-record around audio acquisition.
+- Add manually accessible route refresh without reloading/interrupting WebRTC video.
+- Add optional system-routed input: getUserMedia without exact deviceId and request iOS audio session route.
+- This is a best-effort workaround for WebKit USB microphone input issues, not guaranteed physical routing.
+- Preserve controls, audio processing, network, stable link and QR behavior.
