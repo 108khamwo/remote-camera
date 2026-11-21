@@ -1,4 +1,4 @@
-/* Remote Camera v0.11.39 — sender quality command ACK + receiver stats fixes */
+/* Remote Camera v0.11.43 — Share Control Center + local QR; legacy streaming/messaging unchanged */
 const $=s=>document.querySelector(s);
 const logEl=$('#log');
 let discoveryVdo=null, discoveryCtl=null, discoveryTimer=null, nativePresenceVdo=null;
@@ -114,7 +114,7 @@ async function copyPermanentLink(value,btn){
     await navigator.clipboard.writeText(value);
     const prev=btn.textContent;btn.textContent='คัดลอกแล้ว';setTimeout(()=>btn.textContent=prev,1200);
   }catch{
-    const input=btn.parentElement?.querySelector('input');if(input){input.focus();input.select()}
+    const input=btn.closest('.share-qr-card')?.querySelector('#shareQrUrl')||btn.parentElement?.querySelector('input');if(input){input.focus();input.select()}
     alert('กรุณาคัดลอกลิงก์จากช่องข้อความ');
   }
 }
@@ -124,7 +124,10 @@ function permanentLinkRow(label,url){
   const input=document.createElement('input');input.type='text';input.readOnly=true;input.value=url;input.setAttribute('aria-label',label);
   const button=document.createElement('button');button.type='button';button.className='ghost';button.textContent='คัดลอก';
   button.addEventListener('click',()=>copyPermanentLink(url,button));
-  wrap.append(title,input,button);return wrap;
+  const qr=document.createElement('button');qr.type='button';qr.className='ghost qr-small-btn';qr.textContent='QR';
+  qr.setAttribute('aria-label','แสดง QR '+label);
+  qr.addEventListener('click',()=>showLinkQr(label,url));
+  wrap.append(title,input,button,qr);return wrap;
 }
 function renderFixedSlots(){
   const box=$('#permanentSlotList');if(!box)return;box.replaceChildren();
@@ -158,6 +161,86 @@ function addFixedSlot(name,id=null){
   registrySignature='';renderRegistry(null,{force:true});renderFixedSlots();
   return stream;
 }
+
+
+// v0.11.43: local, serverless snapshot of known camera links for other Control Centers.
+const CONTROL_SHARE_LIMIT=80;
+function base64urlOfUtf8(text){
+  const bytes=new TextEncoder().encode(text);let bin='';for(const b of bytes)bin+=String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+function utf8FromBase64url(raw){
+  if(!/^[A-Za-z0-9_-]{1,16000}$/.test(raw))throw Error('ข้อมูลลิงก์ไม่ถูกต้อง');
+  const bin=atob(raw.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-raw.length%4)%4));
+  const bytes=Uint8Array.from(bin,c=>c.charCodeAt(0));return new TextDecoder('utf-8',{fatal:true}).decode(bytes);
+}
+function collectShareCameras(){
+  const entries=new Map();
+  // Permanent links (including offline ones) are always included first.
+  for(const slot of fixedSlots)entries.set(slot.id,[slot.id,slot.name,'r']);
+  // Include manually registered or discovered cameras, too.
+  for(const c of cameras){
+    if(!/^cam_[A-Za-z0-9_]{1,110}$/.test(c.id)||entries.has(c.id))continue;
+    entries.set(c.id,[c.id,String(c.name||c.id).slice(0,70),c.transport==='direct'?'d':'r']);
+  }
+  return [...entries.values()];
+}
+function controlShareUrl(){
+  const all=collectShareCameras();
+  if(!all.length)throw Error('กรุณาสร้างหรือเพิ่มกล้องก่อนแชร์');
+  if(all.length>CONTROL_SHARE_LIMIT)throw Error('จำนวนกล้องมากเกินขีดจำกัด');
+  const u=new URL('control.html',location.href);
+  u.search='';u.hash='share='+base64urlOfUtf8(JSON.stringify([1,all]));return {url:u.href,count:all.length};
+}
+function validShareEntries(encoded){
+  const decoded=JSON.parse(utf8FromBase64url(encoded));
+  if(!Array.isArray(decoded)||decoded[0]!==1||!Array.isArray(decoded[1])||!decoded[1].length||decoded[1].length>CONTROL_SHARE_LIMIT)throw Error('ลิงก์แชร์ไม่ถูกต้อง');
+  const out=new Map();
+  for(const item of decoded[1]){
+    if(!Array.isArray(item)||item.length!==3)throw Error('ข้อมูลกล้องไม่ถูกต้อง');
+    const [id,label,transport]=item;
+    if(typeof id!=='string'||!/^cam_[a-zA-Z0-9_]{1,110}$/.test(id)||typeof label!=='string'||label.length>70||!['r','d'].includes(transport))throw Error('ข้อมูลกล้องไม่ถูกต้อง');
+    if(id.startsWith('cam_fixed_')&&!/^cam_fixed_[a-f0-9]{32}$/.test(id))throw Error('รหัสลิงก์ถาวรไม่ถูกต้อง');
+    out.set(id,[id,label,transport]);
+  }
+  return [...out.values()];
+}
+function importSharedControlFromHash(){
+  const raw=location.hash.slice(1);
+  if(!raw.startsWith('share='))return;
+  // Clear URL after reading, to avoid sharing/copying the sensitive camera list accidentally.
+  history.replaceState(null,'',location.pathname+location.search);
+  try{
+    const items=validShareEntries(raw.slice(6));
+    const fresh=items.filter(([id])=>!fixedSlots.some(s=>s.id===id)&&!cameras.some(c=>c.id===id));
+    const confirmed=confirm(`นำเข้ารายชื่อกล้อง ${items.length} กล้องจากลิงก์แชร์?\nเครื่องนี้จะเก็บรายชื่อไว้เอง`);
+    if(!confirmed)return;
+    let imported=0;
+    for(const [id,name,transport] of items){
+      if(/^cam_fixed_[a-f0-9]{32}$/.test(id)&&!fixedSlots.some(s=>s.id===id)){fixedSlots.push({id,name});imported++}
+      if(!cameras.some(c=>c.id===id)){
+        cameras.push({id,deviceId:'',name,platform:'',browser:'',transport:transport==='d'?'direct':'room',online:false,lastSeen:0,uuid:''});
+        if(!/^cam_fixed_/.test(id))imported++;
+      }
+    }
+    saveFixedSlots();saveCameras();
+    queueMicrotask(()=>{const box=document.querySelector('#shareImportInfo');if(box){box.textContent=imported?`นำเข้ากล้อง ${imported} รายการแล้ว`:'มีกล้องเหล่านี้อยู่แล้ว';box.hidden=false;}});
+  }catch(err){queueMicrotask(()=>{const box=document.querySelector('#shareImportInfo');if(box){box.textContent='นำเข้าลิงก์ไม่สำเร็จ: '+err.message;box.hidden=false;}})}
+}
+let qrDialogTrigger=null;
+function showLinkQr(label,url,description=''){
+  const dialog=$('#shareQrDialog'),canvas=$('#shareQrCanvas'),error=$('#shareQrError');
+  qrDialogTrigger=document.activeElement;
+  $('#shareQrTitle').textContent=label;
+  $('#shareQrUrl').value=url;
+  $('#shareQrInfo').textContent=description;
+  $('#shareQrNative').hidden=!navigator.share;
+  error.hidden=true;canvas.hidden=false;
+  try{window.RemoteCameraQr.render(canvas,url)}
+  catch(e){canvas.hidden=true;error.textContent=e.message+' · ใช้คัดลอกลิงก์แทน';error.hidden=false}
+  dialog.hidden=false;$('#shareQrClose').focus();
+}
+function hideLinkQr(){const d=$('#shareQrDialog');d.hidden=true;qrDialogTrigger?.focus?.()}
 
 let selectedCameraId=cleanId(localStorage.getItem(SELECTED_CAMERA_STORE)||'');
 let userSelectionLocked=false;
@@ -844,13 +927,22 @@ function removeSelectedDirect(){
   cameras=cameras.filter(x=>x.id!==id);if(selectedCameraId===id)rememberSelectedCamera('');if(connectedStreamId===id)closeSelected();saveCameras();registrySignature='';renderRegistry(null,{force:true});log(`ลบ Native Direct: ${id}`);
 }
 
-loadFixedSlots();loadCameras();seedFixedSlots();renderFixedSlots();updateMonitorAudioUi();$('#room').value=systemRoom();if($('#roomText'))$('#roomText').textContent=$('#room').value;renderRegistry();updateObs();resetTelemetry();setControlStatus('ควบคุมกล้องจากหน้ามือถือ');
+loadFixedSlots();loadCameras();importSharedControlFromHash();seedFixedSlots();renderFixedSlots();updateMonitorAudioUi();$('#room').value=systemRoom();if($('#roomText'))$('#roomText').textContent=$('#room').value;renderRegistry();updateObs();resetTelemetry();setControlStatus('ควบคุมกล้องจากหน้ามือถือ');
 setTimeout(()=>maybeAutoOpen(),350);
 RECEIVER_CONTROLS.forEach(id=>$('#'+id).addEventListener('change',()=>{
   if(isFixedSlot(activeId()))return;
   storeReceiverProfile();updateObs();renderMultiObs();reloadPreview();
 }));
 $('#cameraSelect').addEventListener('change',e=>selectCamera(e.target.value,{fromUser:true}).catch(x=>log(`Select error: ${x.message}`)));
+$('#shareControlCenter').addEventListener('click',()=>{
+  try{const s=controlShareUrl();showLinkQr('แชร์ Control Center',s.url,`รายชื่อกล้อง ${s.count} กล้อง · เครื่องที่ได้รับลิงก์สามารถควบคุมกล้องได้`)}catch(e){alert(e.message)}
+});
+$('#obsQrBtn').addEventListener('click',()=>{const url=$('#obsUrl').value;if(url)showLinkQr('ลิงก์ OBS',url)});
+$('#shareQrClose').addEventListener('click',hideLinkQr);
+$('#shareQrDialog').addEventListener('click',e=>{if(e.target.dataset?.closeQr)hideLinkQr()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#shareQrDialog').hidden)hideLinkQr()});
+$('#shareQrCopy').addEventListener('click',e=>copyPermanentLink($('#shareQrUrl').value,e.currentTarget));
+$('#shareQrNative').addEventListener('click',async()=>{try{await navigator.share({title:$('#shareQrTitle').textContent,url:$('#shareQrUrl').value})}catch(e){if(e.name!=='AbortError')alert('แชร์ไม่ได้ กรุณากดคัดลอกลิงก์')}});
 $('#createPermanentSlot').addEventListener('click',()=>{
   const input=$('#permanentSlotName');
   try{const id=addFixedSlot(input.value);input.value='';selectCamera(id,{fromUser:true}).catch(()=>{});}

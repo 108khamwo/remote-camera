@@ -1,0 +1,13 @@
+Remote Camera v0.11.42 — SEAMLESS CONTROL AUDIO MONITOR
+Based on v0.11.41 (full source).
+
+Fixed: Control Center 'ฟังเสียง' / 'ปิดฟังเสียง' no longer reloads the preview iframe.
+- Preview now subscribes to audio once but starts speaker-muted (VDO.Ninja &mutespeaker=1), rather than omitting audio tracks (&noaudio).
+- The Control Center button signals its same-origin receiver iframe with postMessage.
+- receiver.html forwards the incoming mute/unmute command to the embedded VDO.Ninja iframe via its documented IFRAME API.
+- Switching cameras or changing separate receiver network settings can still reload the preview, as before.
+- No sender logic, room/stream IDs, OBS fixed links, messaging, camera, microphone, or video quality logic changed.
+
+IMPORTANT: Browser autoplay restrictions may still require a click/play for audible monitoring on some browsers.
+Monitoring starts OFF on Control Center page load. Headphones recommended to prevent feedback.
+Test limits: static checks and simulated iframe commands; live iOS/OBS validation still needed.

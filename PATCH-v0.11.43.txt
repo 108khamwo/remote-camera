@@ -1,0 +1,8 @@
+Remote Camera v0.11.43 - SHARE CONTROL + QR LINKS
+
+- Control Center: แชร์ Control Center generates shareable list snapshot, includes permanent slots and recognized native/discovered cameras. Recipient opens shared link, confirms import. Merge without deleting any existing cameras.
+- QR buttons for sender permanent URL, OBS permanent URL, and current OBS URL.
+- QR opens as a pop-up only when tapped; all QR rendering happens locally without calling a QR service.
+- No change to WebRTC streams, audio, message handlers, permanent sender/OBS URLs, or camera video controls.
+- Links contain camera stream IDs and grant access; share only with trusted people. Snapshot is not real-time sync.
+- QR for very large lists may not fit. Use copy link in those cases.

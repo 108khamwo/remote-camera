@@ -1,17 +1,21 @@
 <!doctype html>
-<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="styles.css?v=01141"><title>ผู้ควบคุม | ระบบ Live Streaming ระยะไกลผ่านมือถือ</title></head>
+<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="styles.css?v=01143"><title>ผู้ควบคุม | ระบบ Live Streaming ระยะไกลผ่านมือถือ</title></head>
 <body><main class="wrap compact-control">
 <div class="topbar"><div class="brand control-brand"><svg class="control-ui-icon control-ui-icon-brand" viewBox="0 0 24 24" aria-hidden="true">
   <rect x="3" y="4" width="18" height="13" rx="2.5"></rect>
   <path d="M8.5 21h7"></path><path d="M12 17v4"></path>
-</svg><span>Control Center</span> <span class="version">v0.11.42</span></div><a class="badge" href="index.html">หน้าหลัก</a></div>
+</svg><span>Control Center</span> <span class="version">v0.11.43</span></div><a class="badge" href="index.html">หน้าหลัก</a></div>
 
 <div class="card permanent-link-card">
-  <div class="camera-picker-head"><div class="section-title">ลิงก์ส่งภาพถาวร</div></div>
+  <div class="camera-picker-head">
+    <div class="section-title">ลิงก์ส่งภาพถาวร</div>
+    <button id="shareControlCenter" class="primary share-control-btn" type="button">แชร์ Control Center</button>
+  </div>
   <div class="perma-create-row">
     <input id="permanentSlotName" maxlength="70" placeholder="ชื่อกล้อง เช่น กล้องหน้าเวที" autocomplete="off" aria-label="ตั้งชื่อกล้อง">
     <button id="createPermanentSlot" class="primary" type="button">+ สร้างคู่ลิงก์</button>
   </div>
+  <div id="shareImportInfo" class="mini share-import-info" hidden role="status"></div>
   <div id="permanentSlotList" class="perma-slot-list"></div>
   <details class="compact-details perma-import">
     <summary>เพิ่มลิงก์เดิมกลับเข้ารายการ</summary>
@@ -103,7 +107,7 @@
 </section>
 
 <aside>
-  <div class="card"><div class="section-title">OBS Browser Source · ลิงก์สั้น</div><div class="copybox"><input id="obsUrl" readonly><button id="copy">คัดลอก</button></div><div class="mini">ลิงก์นี้ใช้กับ OBS ได้โดยตรง และจะถอดค่ากลับเป็น Receiver ภายในระบบอัตโนมัติ</div></div>
+  <div class="card"><div class="section-title">OBS Browser Source · ลิงก์สั้น</div><div class="copybox"><input id="obsUrl" readonly><button id="copy">คัดลอก</button><button id="obsQrBtn" class="ghost qr-small-btn" type="button" aria-label="QR ลิงก์ OBS">QR</button></div><div class="mini">ลิงก์นี้ใช้กับ OBS ได้โดยตรง และจะถอดค่ากลับเป็น Receiver ภายในระบบอัตโนมัติ</div></div>
   <div class="spacer"></div>
   <div class="card"><div class="section-title">สถานะสด</div><div class="kv compact-kv"><div>โหมด</div><div id="statNetworkMode">-</div><div id="smartTargetLabel">Bitrate</div><div id="smartTarget">-</div><div id="smartStateLabel" class="hidden">เน็ต</div><div id="smartState" class="hidden">-</div><div id="smartActualLabel" class="hidden">รับจริง</div><div id="smartActual" class="hidden">-</div><div id="smartLossLabel" class="hidden">Loss</div><div id="smartLoss" class="hidden">-</div><div id="smartRttLabel" class="hidden">RTT</div><div id="smartRtt" class="hidden">-</div><div id="smartJitterLabel" class="hidden">Jitter</div><div id="smartJitter" class="hidden">-</div></div></div>
 
@@ -117,4 +121,15 @@
 </aside>
 </div></main>
 <div id="controlMessageToast" class="control-message-toast" hidden><strong id="controlMessageToastFrom">ข้อความจากกล้อง</strong><div id="controlMessageToastText"></div></div>
-<script src="sdk-loader.js?v=01141"></script><script src="control.js?v=01142"></script></body></html>
+<div id="shareQrDialog" class="share-qr-dialog" hidden role="dialog" aria-modal="true" aria-labelledby="shareQrTitle">
+  <div class="share-qr-backdrop" data-close-qr="1"></div>
+  <div class="share-qr-card" role="document">
+    <div class="share-qr-head"><strong id="shareQrTitle">สแกน QR</strong><button id="shareQrClose" class="ghost" type="button" aria-label="ปิด QR">✕</button></div>
+    <canvas id="shareQrCanvas" aria-label="QR Code สำหรับสแกนเปิดลิงก์"></canvas>
+    <div id="shareQrInfo" class="mini"></div>
+    <input id="shareQrUrl" readonly aria-label="ลิงก์สำหรับแชร์">
+    <div class="share-qr-actions"><button id="shareQrCopy" class="primary" type="button">คัดลอกลิงก์</button><button id="shareQrNative" class="ghost" type="button" hidden>แชร์</button></div>
+    <div id="shareQrError" class="mini share-qr-error" role="status" hidden></div>
+  </div>
+</div>
+<script src="sdk-loader.js?v=01141"></script><script src="qr-local.js?v=01143"></script><script src="control.js?v=01143"></script></body></html>

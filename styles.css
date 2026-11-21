@@ -915,3 +915,27 @@ body.fullscreen-active .sender-call-controls{flex:none}
 .control-listen-btn:disabled{opacity:.45;cursor:default}
 .control-listen-tip{flex:1;min-width:0;font-size:11px;color:#9eb6c7}
 .control-listen-tip[hidden]{display:none!important}
+
+/* v0.11.43: minimal sharing UI and isolated QR viewer */
+.share-control-btn{font-size:13px;padding:9px 12px;white-space:nowrap}
+.perma-url-line{grid-template-columns:73px minmax(0,1fr) auto auto}
+.perma-url-line .qr-small-btn,.qr-small-btn{padding:7px 9px;min-width:38px;font-size:12px;font-weight:800;white-space:nowrap}
+.share-import-info{margin-top:8px;color:var(--accent)}
+.share-qr-dialog[hidden]{display:none!important}
+.share-qr-dialog{position:fixed;inset:0;z-index:99999;display:grid;place-items:center;padding:16px;overscroll-behavior:contain}
+.share-qr-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.78)}
+.share-qr-card{position:relative;z-index:1;background:#102538;border:1px solid #35536a;border-radius:17px;box-shadow:0 18px 60px #0009;padding:16px;width:min(100%,440px);max-height:calc(100dvh - 28px);overflow-y:auto;display:flex;align-items:stretch;flex-direction:column;gap:10px}
+.share-qr-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.share-qr-head strong{font-size:17px}
+.share-qr-head button{min-width:38px;min-height:36px}
+#shareQrCanvas{display:block;max-width:100%;width:min(100%,360px);height:auto;align-self:center;background:white;padding:8px;border-radius:8px;image-rendering:pixelated;aspect-ratio:1}
+#shareQrCanvas[hidden],#shareQrError[hidden]{display:none!important}
+#shareQrUrl{width:100%;min-width:0;font-size:12px}
+.share-qr-actions{display:flex;gap:8px}
+.share-qr-actions button{flex:1;min-width:0}
+.share-qr-error{color:var(--warn)}
+@media(max-width:580px){.perma-url-line{grid-template-columns:minmax(0,1fr) auto auto}.perma-url-line .mini{grid-column:1/-1}.share-control-btn{padding:8px 10px;font-size:12px}.share-qr-card{padding:12px}.share-qr-head strong{font-size:15px}}
+@media(max-width:370px){.perma-url-line button{padding:7px 7px}.share-control-btn{font-size:11px;padding:8px 8px}}
+/* Keep the share button and dialog close button compact despite global button width:100%. */
+.share-control-btn{width:auto;flex:0 0 auto}
+.share-qr-head button{width:38px;flex:0 0 38px;padding:7px}
