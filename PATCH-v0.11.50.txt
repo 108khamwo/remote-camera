@@ -1,0 +1,2 @@
+Remote Camera v0.11.50 — LIGHT STABILIZATION
+Enable Sender > Settings > กันสั่นเบา. Experimental 2D motion-compensated canvas stream. No Audio/Control changes. Default off. Crop approx 6% each edge. If unsupported or overloaded fallback direct.

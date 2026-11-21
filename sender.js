@@ -1,4 +1,4 @@
-/* Remote Camera v0.11.49 — iOS external microphone route guard during LIVE */
+/* Remote Camera v0.11.50 — optional video shake reduction, preserve iOS MIC ROUTE GUARD */
 const $=s=>document.querySelector(s); const logEl=$('#log');
 function log(m){const t=new Date().toLocaleTimeString();logEl.textContent+=`[${t}] ${m}\n`;if(logEl.textContent.length>18000)logEl.textContent=logEl.textContent.slice(-12000);logEl.scrollTop=logEl.scrollHeight}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -31,6 +31,84 @@ const senderMessages=[];
 const processedMessageIds=new Map();const pendingSenderMessageAcks=new Map();let senderMessageSeq=0;
 function nextSenderMessageId(){senderMessageSeq=(senderMessageSeq+1)%100000;return `smsg_${Date.now().toString(36)}_${senderMessageSeq.toString(36)}`}
 const video=$('#cameraVideo');
+// Stabilization is deliberately opt-in: canvas processing can cost GPU/CPU
+// on older phones. Audio stays on the original mic track, independent of video.
+const STAB_PREF_KEY='remoteCameraLightStabilizationV1';
+let stabilizeWanted=localStorage.getItem(STAB_PREF_KEY)==='1';
+let stabEngine=null,stabBusy=false;
+function updateStabilizeUi(message=''){
+  const toggle=$('#stabilizeToggle'),status=$('#stabilizeStatus');
+  if(toggle){toggle.checked=stabilizeWanted;toggle.disabled=stabBusy}
+  if(status)status.textContent=message||(stabEngine?'เปิด · ลดสั่นเล็กน้อย':stabilizeWanted?'เปิดเมื่อเริ่มส่ง':'ปิด');
+  const stat=$('#statOutput');
+  if(stat&&cameraStream)stat.textContent=stabEngine?'กันสั่นเบา · Canvas 30 FPS':'Direct camera track';
+}
+async function replaceOutgoingVideoTrack(next){
+  const old=outStream?.getVideoTracks?.()[0]||null;
+  if(!next||!outStream||old===next)return;
+  if(isPublishing&&vdo&&old)await vdo.replaceTrack(old,next);
+  if(old)outStream.removeTrack(old);
+  outStream.addTrack(next);
+}
+async function setStabilizationEnabled(wanted,{persist=true,message=''}={}){
+  if(stabBusy)return false;
+  stabBusy=true;updateStabilizeUi('กำลังเปลี่ยน…');
+  try{
+    if(wanted){
+      if(!window.RemoteCameraStabilizer?.create||!HTMLCanvasElement.prototype.captureStream){
+        throw new Error('เบราว์เซอร์นี้ยังใช้กันสั่นผ่าน Canvas ไม่ได้');
+      }
+      stabilizeWanted=true;
+      if(!cameraStream?.getVideoTracks?.()[0]||document.hidden){
+        if(persist)localStorage.setItem(STAB_PREF_KEY,'1');
+        updateStabilizeUi('จะเปิดเมื่อเริ่มส่ง');
+        return true;
+      }
+      if(!stabEngine){
+        const canvas=$('#stabilizedCanvas');
+        const engine=window.RemoteCameraStabilizer.create(video,canvas,{
+          fps:30,
+          onFailure:e=>{
+            if(stabEngine!==engine)return;
+            log(`กันสั่นหยุด: ${e.message}`);
+            setStabilizationEnabled(false,{persist:true,message:'ปิดอัตโนมัติ · เครื่องทำงานหนัก'}).catch(()=>{});
+          }
+        });
+        try{
+          const output=await engine.ready;
+          await replaceOutgoingVideoTrack(output);
+          stabEngine=engine;
+          canvas.hidden=false;
+          log('กันสั่นเบา: เปิดแล้ว (Canvas track); ไมค์ HOLLYLAND ไม่ถูกเปลี่ยน');
+        }catch(e){engine.stop();throw e}
+      }
+      if(persist)localStorage.setItem(STAB_PREF_KEY,'1');
+      updateStabilizeUi('เปิด · กันสั่นเบา');
+    }else{
+      stabilizeWanted=false;
+      if(stabEngine){
+        await replaceOutgoingVideoTrack(cameraStream?.getVideoTracks?.()[0]);
+        stabEngine.stop();stabEngine=null;
+        $('#stabilizedCanvas').hidden=true;
+        log('กันสั่นเบา: ปิด กลับเป็น Camera Track เดิม');
+      }
+      if(persist)localStorage.setItem(STAB_PREF_KEY,'0');
+      updateStabilizeUi(message||'ปิด');
+    }
+    sendTelemetry();return true;
+  }catch(e){
+    log(`กันสั่น: ${e.message}`);
+    if(wanted){stabilizeWanted=false;localStorage.setItem(STAB_PREF_KEY,'0')}
+    // Keep the error visible instead of overwriting it in finally.
+    stabBusy=false;
+    updateStabilizeUi(`กันสั่นใช้งานไม่ได้: ${e.message}`);
+    return false;
+  }finally{
+    stabBusy=false;
+    const toggle=$('#stabilizeToggle');if(toggle)toggle.disabled=false;
+  }
+}
+
 function updateMicUi(){
   const btn=$('#micToggleBtn'),slash=$('#micMuteSlash');
   if(btn){
@@ -1432,9 +1510,17 @@ async function openCamera({facing=currentFacing,deviceId=''}={}){
 
     if(isPublishing&&vdo&&oldTrack){
       try{
-        await vdo.replaceTrack(oldTrack,nextTrack);
-        if(outStream){try{outStream.removeTrack(oldTrack)}catch{};if(!outStream.getVideoTracks().includes(nextTrack))outStream.addTrack(nextTrack)}
-        log('✓ replaceTrack สำเร็จ — WebRTC connection เดิมยังอยู่');
+        const currentOutput=outStream?.getVideoTracks?.()[0]||oldTrack;
+        if(stabEngine?.track===currentOutput){
+          // Stabilizer's canvas track remains the publisher; merely swap the
+          // camera feeding the same canvas. NEVER replace the mic track.
+          stabEngine.resetTracking();
+          log('✓ เปลี่ยนแหล่งกล้องเข้า Canvas กันสั่น (WebRTC เดิม)');
+        }else{
+          await vdo.replaceTrack(currentOutput,nextTrack);
+          if(outStream){try{outStream.removeTrack(currentOutput)}catch{};if(!outStream.getVideoTracks().includes(nextTrack))outStream.addTrack(nextTrack)}
+          log('✓ replaceTrack สำเร็จ — WebRTC connection เดิมยังอยู่');
+        }
       }catch(e){
         nextStream.getTracks().forEach(t=>t.stop());
         throw new Error(`สลับ WebRTC track ไม่สำเร็จ: ${e.message}`);
@@ -1549,9 +1635,12 @@ async function buildOutStream(){
   await ensureMic();
   const vt=cameraStream.getVideoTracks()[0];
   try{vt.contentHint=q().hint}catch{}
-  outStream=new MediaStream([vt,micOutgoingTrack()]);
+  if(stabilizeWanted&&!stabEngine)await setStabilizationEnabled(true,{persist:false});
+  const outputTrack=stabEngine?.track?.readyState==='live'?stabEngine.track:vt;
+  outStream=new MediaStream([outputTrack,micOutgoingTrack()]);
   const s=vt.getSettings();
-  log(`Output ใช้ Camera Track โดยตรง ${s.width||'?'}×${s.height||'?'} @${Math.round(s.frameRate||0)||'?'} / hint=${q().hint}`);
+  log(`Output ${outputTrack===vt?'Camera Track ตรง':'กันสั่นเบา Canvas'} ${s.width||'?'}×${s.height||'?'} @${Math.round(s.frameRate||0)||'?'} / hint=${q().hint}`);
+  updateStabilizeUi();
   return outStream;
 }
 
@@ -1660,8 +1749,11 @@ async function stopAll(){
   if(IS_IOS)setIOSAudioSession('auto');
   closeMicProcessor(micProcessor);micProcessor=null;
   updateMicUi();updateMicGainUi();updateMicNoiseUi();
+  if(stabEngine){stabEngine.stop();stabEngine=null}
+  const stabCanvas=$('#stabilizedCanvas');if(stabCanvas)stabCanvas.hidden=true;
   outStream=null;
   video.srcObject=null;
+  updateStabilizeUi();
   setScreenRest(false);releaseWakeLock();
   $('#liveBadge').textContent='OFFLINE';updateSimpleStatus();$('#liveBadge').classList.remove('ok');$('#statRtc').textContent='OFFLINE';$('#statMic').textContent='-';updateSenderQualityUi();log('หยุดทั้งหมด')
 }
@@ -1745,6 +1837,8 @@ $('#micToggleBtn').onclick=()=>setMicMuted(!micMuted);
 $('#micGainRange').addEventListener('input',e=>setMicGain(e.target.value));
 $('#micGainResetBtn').onclick=()=>setMicGain(100);
 $('#micNoiseToggle').addEventListener('change',e=>setMicNoiseSuppression(e.target.checked));
+$('#stabilizeToggle').addEventListener('change',e=>{setStabilizationEnabled(e.target.checked).catch(err=>log(`Stabilizer switch: ${err.message}`))});
+updateStabilizeUi();
 $('#micDeviceSelect').addEventListener('change',()=>micStatus('เลือกแล้ว • กดใช้ไมค์ที่เลือกเพื่อเปลี่ยนเสียงจริง'));
 $('#refreshMicBtn').onclick=async()=>{
   const btn=$('#refreshMicBtn');btn.disabled=true;
@@ -1822,10 +1916,29 @@ if(IS_IOS){
   window.addEventListener('pageshow',()=>{if(isPublishing)scheduleIOSMicRoute(950,'page-shown')});
   window.addEventListener('focus',()=>{if(isPublishing&&Date.now()-iosMicRouteLastSuccessAt>15000)scheduleIOSMicRoute(700,'window-focused')});
 }
+let stabRestoreAfterBackground=false,stabPausePromise=null;
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden&&stabEngine){
+    // Background canvas rendering can be throttled. Best-effort switch to the
+    // direct camera; remember the desired setting for when we return.
+    stabRestoreAfterBackground=stabilizeWanted;
+    stabPausePromise=setStabilizationEnabled(false,{persist:false,message:'พักกันสั่นขณะสลับแอป'});
+  }else if(!document.hidden&&stabRestoreAfterBackground){
+    stabRestoreAfterBackground=false;
+    const waiting=stabPausePromise;stabPausePromise=null;
+    Promise.resolve(waiting).then(()=>{
+      stabilizeWanted=true;
+      // Resume only when visible and the camera is still alive.
+      if(isPublishing&&cameraStream?.getVideoTracks?.()[0]?.readyState==='live')
+        return setStabilizationEnabled(true,{persist:false});
+      updateStabilizeUi();
+    }).catch(e=>log(`กลับมาเปิดกันสั่นไม่ได้: ${e.message}`));
+  }
+});
 window.addEventListener('beforeunload',()=>stopAll());
 if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=01149').catch(()=>{});
 $('#statHint').textContent=q().hint;
 $('#statSmartProfile').textContent=smartProfile;
 initIdentity();updateSimpleStatus();updateMicUi();updateMicGainUi();updateMicNoiseUi();
 $('#newStreamId').onclick=generateNewStreamId;
-log(`v0.11.49 iOS MIC ROUTE GUARD พร้อมใช้งาน — Sender quick quality presets / Mic Volume & Noise Reduction / Control Data Hub — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
+log(`v0.11.50 LIGHT STABILIZATION พร้อมใช้งาน — Sender quick quality presets / Mic Volume & Noise Reduction / Control Data Hub — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);

@@ -942,3 +942,12 @@ body.fullscreen-active .sender-call-controls{flex:none}
 
 /* v0.11.47: hidden iOS mic helpers must not take space on Android. */
 .settings-button-row[hidden]{display:none!important}
+
+/* v0.11.50: processed preview occupies exactly the old camera stage.
+   Never intercept the message toast, zoom controls, or touch hit targets. */
+.sender-call-stage>.sender-stabilizer-canvas{
+  position:absolute;inset:0;display:block;width:100%;height:100%;
+  object-fit:cover;pointer-events:none!important;z-index:0;
+}
+.sender-call-stage>.sender-stabilizer-canvas[hidden]{display:none!important}
+#stabilizeToggle{flex:none;accent-color:#00c0fa}
