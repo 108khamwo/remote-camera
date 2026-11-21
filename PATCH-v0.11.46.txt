@@ -1,0 +1,8 @@
+Remote Camera v0.11.46 — iOS Mic Selection Regression Fix
+
+- iOS Safari/Firefox can return a different deviceId despite capturing a valid live microphone track.
+- Previous strict rejection stopped valid audio tracks, retried capture and sometimes reverted to the phone microphone.
+- On iOS, retain live capture instead of rejecting on deviceId mismatch.
+- Do not claim physical microphone routing is verified by deviceId; listen to confirm.
+- Other-platform device checks remain strict.
+- No changes to video, control, chat, QR, stable links or network logic.

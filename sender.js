@@ -1,11 +1,16 @@
-/* Remote Camera v0.11.44 — Verified microphone routing and safe mobile capture switch */
+/* Remote Camera v0.11.46 — iOS external microphone selection regression fix */
 const $=s=>document.querySelector(s); const logEl=$('#log');
 function log(m){const t=new Date().toLocaleTimeString();logEl.textContent+=`[${t}] ${m}\n`;if(logEl.textContent.length>18000)logEl.textContent=logEl.textContent.slice(-12000);logEl.scrollTop=logEl.scrollHeight}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 let cameraStream=null,audioStream=null,outStream=null,vdo=null,messageVdo=null,messageReady=false,messageViewPending=false,messageRetryTimer=null,currentFacing='environment',isPublishing=false,lastRemoteTs=0;
 const MIC_DEVICE_PREF_KEY='remoteCamMicSelectedDeviceV2';
 const MIC_LABEL_PREF_KEY='remoteCamMicSelectedLabelV2';
+const MIC_MODE_PREF_KEY='remoteCamMicSelectionModeV1';
 let micMuted=false,explicitMicDeviceId=localStorage.getItem(MIC_DEVICE_PREF_KEY)||'',preferredMicLabel=localStorage.getItem(MIC_LABEL_PREF_KEY)||'',micSwitchPromise=null;
+// Existing saved device selections are intentional. New users default to
+// automatically preferring a clearly identifiable external microphone.
+let micSelectionMode=localStorage.getItem(MIC_MODE_PREF_KEY)|| (explicitMicDeviceId?'manual':'auto');
+if(micSelectionMode!=='manual' || !explicitMicDeviceId)micSelectionMode='auto';
 const MIC_GAIN_KEY='remoteCamMicGainV1',MIC_NOISE_KEY='remoteCamMicNoiseV1';
 const savedMicGain=localStorage.getItem(MIC_GAIN_KEY);
 let micGainPercent=savedMicGain===null?100:Math.max(0,Math.min(200,Number(savedMicGain)||0));
@@ -566,16 +571,19 @@ async function checkMicHealth(){
   micHealthRunning=true;
   try{
     const raw=activeMicTrack(),p=micProcessor,now=Date.now();
-    if(raw?.readyState==='live'&&explicitMicDeviceId&&!micSelectionCheck(explicitMicDeviceId,raw).ok){
-      micStatus('แหล่งเสียงไม่ตรงกับไมค์ที่เลือก • เปิดตั้งค่าเลือกใหม่');
-      const stageStatus=$('#senderMicState');if(stageStatus)stageStatus.textContent='ตรวจไมค์';
+    if(raw?.readyState==='live'&&explicitMicDeviceId){
+      const check=micSelectionCheck(explicitMicDeviceId,raw);
+      if(!check.ok){
+        micStatus('เบราว์เซอร์เลือกไมค์ไม่ตรง • ตรวจเสียงจริง');
+        const stageStatus=$('#senderMicState');if(stageStatus)stageStatus.textContent='ตรวจไมค์';
+      }
     }
     if(!raw||raw.readyState==='ended'){
       const stageStatus=$('#senderMicState');if(stageStatus)stageStatus.textContent='ไมค์หลุด';
       if(now-lastMicRecoveryAt<MIC_RECOVERY_COOLDOWN_MS)return;
       lastMicRecoveryAt=now;
       log('Mic track ended: reconnecting microphone without restarting camera');
-      try{await selectMicrophone(explicitMicDeviceId)}
+      try{if(micSelectionMode==='auto')await selectAutomaticMicrophone();else await selectMicrophone(explicitMicDeviceId,{mode:'manual'})}
       catch(e){
         // Do not silently substitute the phone microphone for a chosen external input.
         micStatus(explicitMicDeviceId?'ไมค์ที่เลือกหลุด • ต่อใหม่หรือเปิดตั้งค่าเลือกอัตโนมัติ':`ไมค์หลุด • เปิดตั้งค่า: ${e.message}`);
@@ -617,24 +625,90 @@ function stopMicHealth(){
 // exposed check; even that cannot certify the physical audio path on every OS.
 function micSelectionCheck(requestedId,track){
   const actualId=track?.getSettings?.()?.deviceId||'';
-  if(!requestedId)return {ok:true,verified:!!actualId,actualId};
-  if(actualId&&actualId!==requestedId)return {ok:false,verified:true,actualId};
-  return {ok:true,verified:!!actualId,actualId};
+  if(!requestedId)return {ok:true,verified:false,actualId,uncertain:true};
+  // iOS browsers can return a different deviceId after granting permission or
+  // connecting a USB/Lightning wireless receiver. Rejecting such a LIVE track
+  // broke microphones that worked before v0.11.44. Do not discard real audio
+  // just because the identifier changed. An ID is NOT physical-route proof.
+  if(actualId&&actualId!==requestedId){
+    if(IS_IOS)return {ok:true,verified:false,actualId,uncertain:true};
+    return {ok:false,verified:false,actualId,uncertain:true};
+  }
+  return {ok:true,verified:!!actualId,actualId,uncertain:!actualId};
 }
-function rememberMicrophoneSelection(deviceId,track){
+function rememberMicrophoneSelection(deviceId,track,{mode='manual'}={}){
   explicitMicDeviceId=deviceId||'';
-  preferredMicLabel=deviceId?(track?.label?.trim()||preferredMicLabel):'';
+  micSelectionMode=mode==='auto'?'auto':'manual';
+  // An automatically detected device is a session selection, NOT a permanent
+  // pin: a wireless receiver can disappear between broadcasts.
+  preferredMicLabel=micSelectionMode==='manual'&&deviceId?(track?.label?.trim()||preferredMicLabel):'';
   try{
-    if(deviceId)localStorage.setItem(MIC_DEVICE_PREF_KEY,deviceId);else localStorage.removeItem(MIC_DEVICE_PREF_KEY);
-    if(preferredMicLabel)localStorage.setItem(MIC_LABEL_PREF_KEY,preferredMicLabel);else localStorage.removeItem(MIC_LABEL_PREF_KEY);
+    localStorage.setItem(MIC_MODE_PREF_KEY,micSelectionMode);
+    if(micSelectionMode==='manual'&&deviceId)localStorage.setItem(MIC_DEVICE_PREF_KEY,deviceId);
+    else localStorage.removeItem(MIC_DEVICE_PREF_KEY);
+    if(preferredMicLabel)localStorage.setItem(MIC_LABEL_PREF_KEY,preferredMicLabel);
+    else localStorage.removeItem(MIC_LABEL_PREF_KEY);
   }catch{}
 }
 function micSelectionStatus(track,deviceId,{verified=false,changed=false}={}){
   const name=micName(track),live=track?.readyState==='live';
   if(!live)return 'ไมค์ไม่พร้อม';
   if(!deviceId)return `ไมค์อัตโนมัติ: ${name}${micMuted?' (ปิดเสียง)':''}`;
-  if(!verified)return `เลือก ${name} • เบราว์เซอร์ไม่ยืนยันอุปกรณ์ ตรวจเสียงจริง`;
+  if(!verified)return `เปิดไมค์: ${name} • โปรดทดสอบเสียงจริง`;
   return `${changed?'เปลี่ยนแล้ว':'กำลังใช้'}: ${name}${micMuted?' (ปิดเสียง)':''}`;
+}
+// Only prefer inputs that are identifiable as EXTERNAL. An arbitrary second
+// audioinput is not necessarily external (iPhones expose multiple built-in
+// microphones). When labels are hidden, use the browser/OS default route.
+function externalMicPriority(device){
+  if(device?.kind!=='audioinput'||!device?.deviceId)return 0;
+  const label=String(device.label||'').trim();
+  if(!label)return 0;
+  if(/built[ -]?in|internal|integrated|microphone array|mic(?:rophone)?[ -]?(?:front|rear|back|bottom|top)|iphone mic|ipad mic|macbook mic|ไมค์ในเครื่อง|ไมโครโฟนในเครื่อง/i.test(label))return 0;
+  if(/usb|type[ -]?c|lightning|external|headset|headphones?|bluetooth|wireless|airpods|earbuds?|lavalier|lapel|receiver|r[øo]de|dji[ -]?mic|hollyland|boya|saramonic|comica|maono|fifine|shure|sennheiser|ไมค์นอก|ไมโครโฟนภายนอก|ไมค์ไร้สาย|หูฟัง/i.test(label)){
+    return device.deviceId==='default'?1:2;
+  }
+  return 0;
+}
+async function preferredAutomaticMic(){
+  const md=navigator.mediaDevices;
+  if(!md?.enumerateDevices)return {deviceId:'',label:'',external:false};
+  let devices=[];let permissionStream=null;
+  try{
+    devices=await md.enumerateDevices();
+    // Device labels and IDs are often hidden until the user grants microphone
+    // access. Probe only before capture; release that temporary source FIRST.
+    if(!devices.some(d=>d.kind==='audioinput'&&d.label?.trim())&&activeMicTrack()?.readyState!=='live'){
+      try{
+        permissionStream=await md.getUserMedia({audio:true,video:false});
+        devices=await md.enumerateDevices();
+      }catch(e){log(`Automatic mic permission check: ${e.message}`)}
+    }
+  }catch(e){log(`Automatic mic discovery: ${e.message}`)}
+  finally{permissionStream?.getTracks?.().forEach(t=>t.stop())}
+  const candidates=devices.filter(d=>d.kind==='audioinput'&&d.deviceId&&externalMicPriority(d)>0)
+    .sort((a,b)=>externalMicPriority(b)-externalMicPriority(a));
+  const chosen=candidates[0];
+  return chosen?{deviceId:chosen.deviceId,label:chosen.label,external:true}:{deviceId:'',label:'',external:false};
+}
+async function selectAutomaticMicrophone(){
+  const preferred=await preferredAutomaticMic();
+  if(preferred.external)log(`Automatic mic: preferring ${preferred.label}`);
+  try{
+    const track=await selectMicrophone(preferred.deviceId,{mode:'auto'});
+    micStatus(preferred.external?
+      `ไมค์นอกอัตโนมัติ: ${micName(track)} • ทดสอบเสียงจริง`:
+      `ไมค์อัตโนมัติ: ${micName(track)}`);
+    return track;
+  }catch(e){
+    if(!preferred.external)throw e;
+    // Only automatic mode may fall back; an explicitly chosen input never
+    // silently changes to the phone microphone.
+    log(`External mic unavailable, returning to OS default: ${e.message}`);
+    const track=await selectMicrophone('',{mode:'auto'});
+    micStatus(`ไมค์นอกเปิดไม่ได้ • ใช้ไมค์อัตโนมัติ: ${micName(track)}`);
+    return track;
+  }
 }
 async function listMicrophones({requestPermission=false}={}){
   const md=navigator.mediaDevices;
@@ -645,11 +719,11 @@ async function listMicrophones({requestPermission=false}={}){
     const devices=await md.enumerateDevices();
     const mics=devices.filter(d=>d.kind==='audioinput');
     const sel=$('#micDeviceSelect');
-    const wanted=sel.value||explicitMicDeviceId;
+    const wanted=micSelectionMode==='auto'?'':(sel.value||explicitMicDeviceId);
     const active=activeMicTrack();
     const activeId=active?.getSettings?.()?.deviceId||'';
     sel.replaceChildren();
-    const auto=document.createElement('option');auto.value='';auto.textContent='อัตโนมัติ / ไมค์ที่ระบบเลือก';sel.appendChild(auto);
+    const auto=document.createElement('option');auto.value='';auto.textContent='อัตโนมัติ (เลือกไมค์นอกก่อน)';sel.appendChild(auto);
     mics.forEach((d,i)=>{
       const option=document.createElement('option');option.value=d.deviceId;
       option.textContent=`${i+1}. ${d.label||`ไมโครโฟน ${i+1}`}${d.deviceId&&d.deviceId===activeId?' • กำลังใช้':''}`;
@@ -660,16 +734,16 @@ async function listMicrophones({requestPermission=false}={}){
         mics.find(d=>d.deviceId&&d.label===preferredMicLabel):null);
     // Device IDs can rotate after iOS/browser permission changes. Match a
     // previously chosen device by unique label rather than quietly using Auto.
-    if(chosen&&explicitMicDeviceId&&explicitMicDeviceId!==chosen.deviceId&&wanted===explicitMicDeviceId){
+    if(micSelectionMode==='manual'&&chosen&&explicitMicDeviceId&&explicitMicDeviceId!==chosen.deviceId&&wanted===explicitMicDeviceId){
       explicitMicDeviceId=chosen.deviceId;
       try{localStorage.setItem(MIC_DEVICE_PREF_KEY,chosen.deviceId)}catch{}
     }
-    sel.value=chosen?.deviceId||'';
+    sel.value=micSelectionMode==='auto'?'':(chosen?.deviceId||'');
     if(active?.readyState==='live'){
       const check=micSelectionCheck(explicitMicDeviceId,active);
-      if(!check.ok)micStatus(`ไมค์ไม่ตรงที่เลือก • ตอนนี้: ${micName(active)} • เลือกใหม่อีกครั้ง`);
+      if(!check.ok)micStatus(`เบราว์เซอร์เปิดไมค์อื่น: ${micName(active)} • ทดสอบเสียงจริง`);
       else micStatus(micSelectionStatus(active,explicitMicDeviceId,{verified:check.verified}));
-    }else if(explicitMicDeviceId&&!chosen){
+    }else if(micSelectionMode==='manual'&&explicitMicDeviceId&&!chosen){
       micStatus('ไม่พบไมค์ที่เลือกไว้ • ต่อไมค์แล้วกดค้นหา หรือเลือกอัตโนมัติ');
     }else micStatus(mics.length?`พบไมค์ ${mics.length} รายการ • เลือกแล้วกดใช้ไมค์`:'ไม่พบไมโครโฟน');
     return mics;
@@ -688,7 +762,7 @@ async function verifiedMicCapture(deviceId){
   }
   return {stream,track,check};
 }
-async function selectMicrophone(deviceId=''){
+async function selectMicrophone(deviceId='',{mode='manual'}={}){
   // Keep one capture source at a time when replacing a *different* microphone
   // on mobile. Opening two audio inputs simultaneously can leave iOS/Firefox
   // stuck on the built-in mic. Video and signaling are not restarted.
@@ -727,8 +801,8 @@ async function selectMicrophone(deviceId=''){
         if(!outStream.getAudioTracks().includes(nextTrack))outStream.addTrack(nextTrack);
       }
       audioStream=newStream;micProcessor=newProcessor;
-      rememberMicrophoneSelection(deviceId,captured.track);
-      const selectedMic=$('#micDeviceSelect');if(selectedMic)selectedMic.value=deviceId||'';
+      rememberMicrophoneSelection(deviceId,captured.track,{mode});
+      const selectedMic=$('#micDeviceSelect');if(selectedMic)selectedMic.value=mode==='auto'?'':(deviceId||'');
       committed=true;
       if(oldStream&&oldStream!==newStream)oldStream.getTracks().forEach(t=>t.stop());
       closeMicProcessor(oldProcessor);
@@ -738,7 +812,7 @@ async function selectMicrophone(deviceId=''){
       await listMicrophones();
       const verified=captured.check.verified;
       micStatus(micSelectionStatus(captured.track,deviceId,{verified,changed:true}));
-      log(`Mic switched: ${micName(captured.track)} / requested ${deviceId||'auto'} / actual ${captured.check.actualId||'unknown'} / outgoing ${nextTrack.id}`);
+      log(`Mic switched: ${micName(captured.track)} / requested ${deviceId||'auto'} / actual ${captured.check.actualId||'unknown'} / verified=${verified} / outgoing ${nextTrack.id}`);
       if(isPublishing)setTimeout(sendTelemetry,50);
       return captured.track;
     }catch(e){
@@ -807,7 +881,8 @@ async function setMicNoiseSuppression(enabled){
 async function ensureMic(){
   if(micSwitchPromise)await micSwitchPromise;
   if(activeMicTrack()?.readyState==='live'){updateMicUi();return}
-  await selectMicrophone(explicitMicDeviceId);
+  if(micSelectionMode==='auto')await selectAutomaticMicrophone();
+  else await selectMicrophone(explicitMicDeviceId,{mode:'manual'});
 }
 
 async function getCamera(constraints){
@@ -1504,7 +1579,11 @@ $('#refreshMicBtn').onclick=async()=>{
 };
 $('#applyMicBtn').onclick=async()=>{
   const btn=$('#applyMicBtn');btn.disabled=true;
-  try{await selectMicrophone($('#micDeviceSelect').value)}catch{}
+  try{
+    const id=$('#micDeviceSelect').value;
+    if(id)await selectMicrophone(id,{mode:'manual'});
+    else await selectAutomaticMicrophone();
+  }catch{}
   finally{btn.disabled=false}
 };
 if(navigator.mediaDevices?.addEventListener){
@@ -1534,9 +1613,9 @@ document.addEventListener('visibilitychange',()=>{
   }
 });
 window.addEventListener('beforeunload',()=>stopAll());
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=01141').catch(()=>{});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=01145').catch(()=>{});
 $('#statHint').textContent=q().hint;
 $('#statSmartProfile').textContent=smartProfile;
 initIdentity();updateSimpleStatus();updateMicUi();updateMicGainUi();updateMicNoiseUi();
 $('#newStreamId').onclick=generateNewStreamId;
-log(`v0.11.44 MIC ROUTING FIX พร้อมใช้งาน — Sender quick quality presets / Mic Volume & Noise Reduction / Control Data Hub — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);
+log(`v0.11.45 AUTO EXTERNAL MIC พร้อมใช้งาน — Sender quick quality presets / Mic Volume & Noise Reduction / Control Data Hub — ${PLATFORM}/${BROWSER}, Stream ${$('#streamId').value}, Device ${DEVICE_ID}`);

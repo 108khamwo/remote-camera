@@ -1,0 +1,10 @@
+Remote Camera v0.11.45 – AUTO EXTERNAL MICROPHONE
+
+- New/unpinned users: when starting a broadcast, request microphone permission, inspect available audio inputs, and prefer an identifiable USB / wireless / headset external microphone.
+- Explicitly selected microphone remains the priority (including built-in mic); manual selection is not overwritten.
+- Auto mode persists as a MODE, not a stale hardware ID, so the next session detects the current external mic again.
+- When an external mic is not identifiable, leave the input selection to the browser/OS (which may itself select an attached mic).
+- If an auto-selected external mic cannot be opened, report it and fall back to the OS default; manual selection still refuses silent fallback.
+- No mic switching simply because a device appears during LIVE (to prevent audio glitches).
+- Always verify the physical input by recording/listening; device labels and IDs cannot prove iOS routing.
+- No changes to video, messages, Control Center, OBS URLs, QR links, or networking.
